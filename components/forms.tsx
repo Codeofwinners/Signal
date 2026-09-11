@@ -1,5 +1,6 @@
 "use client";
 import { useState, type ReactNode } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
 import {
@@ -39,6 +40,7 @@ export function FormDialog({
   activeCount,
   onClose,
   onSaved,
+  onDeleted,
 }: {
   kind: "project" | "prompt" | "cycle" | "brand";
   projectId?: string;
@@ -49,6 +51,7 @@ export function FormDialog({
   activeCount: number;
   onClose: () => void;
   onSaved: (id?: string) => Promise<void>;
+  onDeleted?: (id: string) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -128,6 +131,30 @@ export function FormDialog({
     } catch (err) {
       setError(message(err));
     } finally {
+      setBusy(false);
+    }
+  }
+  async function handleDeletePrompt() {
+    if (!prompt) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete the prompt "${prompt.prompt}"? This will also remove its recorded checks in this project.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const res = await supabase().rpc("delete_prompt", {
+        p_prompt_id: prompt.id,
+      });
+      if (res.error) throw new Error(res.error.message);
+      if (onDeleted) await onDeleted(prompt.id);
+      else await onSaved();
+      onClose();
+    } catch (err) {
+      setError(message(err));
       setBusy(false);
     }
   }
@@ -323,18 +350,46 @@ export function FormDialog({
             {error}
           </p>
         )}
-        <div className="form-footer">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={onClose}
-          >
-            Cancel
-          </Button>
-          <Button disabled={busy || (kind === "cycle" && !activeCount)}>
-            {busy ? "Saving…" : kind === "cycle" ? "Create cycle" : "Save"}
-          </Button>
+        <div
+          className="form-footer"
+          style={{
+            display: "flex",
+            justifyContent:
+              kind === "prompt" && prompt ? "space-between" : "flex-end",
+            alignItems: "center",
+          }}
+        >
+          {kind === "prompt" && prompt && (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={handleDeletePrompt}
+              style={{
+                color: "#d32f2f",
+                borderColor: "#f5c6cb",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <Trash2 size={14} />
+              Delete prompt
+            </Button>
+          )}
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={busy}
+              onClick={onClose}
+            >
+              Cancel
+            </Button>
+            <Button disabled={busy || (kind === "cycle" && !activeCount)}>
+              {busy ? "Saving…" : kind === "cycle" ? "Create cycle" : "Save"}
+            </Button>
+          </div>
         </div>
       </form>
     </Modal>

@@ -1526,6 +1526,10 @@ export function Workspace({
                 : "Saved successfully.",
             );
           }}
+          onDeleted={async () => {
+            await refresh(projectId);
+            setNotice("Prompt deleted successfully.");
+          }}
         />
       )}
       {entry && (
