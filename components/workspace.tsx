@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Settings2,
   Play,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -86,6 +87,7 @@ export function Workspace({
   const [editPrompt, setEditPrompt] = useState<Prompt>();
   const [entry, setEntry] = useState<Run>();
   const [detail, setDetail] = useState<Run>();
+  const [apiRunningPromptId, setApiRunningPromptId] = useState<string | null>(null);
   const [brandDetail, setBrandDetail] = useState<string | undefined>(
     initialBrandId,
   );
@@ -305,6 +307,68 @@ export function Workspace({
       }
     },
     [data.brands, session],
+  );
+
+  const triggerOpenAICheck = useCallback(
+    async (promptId: string, runId?: string) => {
+      if (!cycleId || !projectId) return;
+      try {
+        setApiRunningPromptId(promptId);
+        const promptObj = data.prompts.find((p) => p.id === promptId);
+        const promptText = promptObj?.prompt || "prompt";
+        const targetBrand =
+          data.brands.find((b) => b.type === "target")?.name ||
+          "LAX Cannabis Club";
+
+        setNotice(
+          `Executing OpenAI Responses API check (GPT-5.6 Luna + Web Search) for "${promptText}"…`,
+        );
+
+        const res = await fetch("/api/run-openai", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: session?.access_token
+              ? `Bearer ${session.access_token}`
+              : "",
+          },
+          body: JSON.stringify({
+            promptId,
+            cycleId,
+            projectId,
+            runId,
+            targetBrand,
+            forceNew: true,
+          }),
+        });
+
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || "Failed to execute OpenAI API check");
+        }
+
+        const mentioned = result.analysis?.target_brand_mentioned;
+        const pos = result.analysis?.target_brand_position;
+        setNotice(
+          `OpenAI API check complete! Target mentioned: ${
+            mentioned ? `Yes (Position #${pos})` : "No"
+          }. Tokens: ${result.usage?.totalTokens ?? "N/A"} (Cost: $${(result.estimatedCost ?? 0).toFixed(4)})`,
+        );
+
+        const fresh = await refresh(projectId);
+        if (result.runId && fresh) {
+          const completedRun = fresh.runs.find((r) => r.id === result.runId);
+          if (completedRun) {
+            setDetail(completedRun);
+          }
+        }
+      } catch (err) {
+        setError(message(err));
+      } finally {
+        setApiRunningPromptId(null);
+      }
+    },
+    [cycleId, projectId, data.prompts, data.brands, session, refresh],
   );
 
   useEffect(() => {
@@ -792,10 +856,11 @@ export function Workspace({
           ) : detail ? (
             <ResultDetail
               key={detail.id}
-              run={detail}
+              run={data.runs.find((r) => r.id === detail.id) || detail}
               data={data}
-              onEdit={() => setEntry(detail)}
+              onEdit={() => setEntry(data.runs.find((r) => r.id === detail.id) || detail)}
               onRunAutomated={(r) => void triggerRunCheck(r)}
+              onRunOpenAI={(r) => void triggerOpenAICheck(r.prompt_id, r.id)}
             />
           ) : brandDetail ? (
             <>
@@ -971,7 +1036,33 @@ export function Workspace({
                     title="Auto-run the next pending ChatGPT check via Consumer UI"
                   >
                     <Play size={12} fill="currentColor" />
-                    Auto-Run Next
+                    Auto-Run Next (UI)
+                  </Button>
+                )}
+                {cycle && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const prerollPrompt =
+                        data.prompts.find((p) =>
+                          p.prompt.toLowerCase().includes("preroll"),
+                        ) || data.prompts[0];
+                      if (prerollPrompt) {
+                        void triggerOpenAICheck(prerollPrompt.id);
+                      }
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontWeight: 600,
+                      color: "#7928ca",
+                      borderColor: "#7928ca",
+                    }}
+                    title="Run official OpenAI API check with Web Search enabled"
+                  >
+                    <Sparkles size={12} fill="currentColor" />
+                    Run OpenAI API Check
                   </Button>
                 )}
               </div>
@@ -1039,62 +1130,234 @@ export function Workspace({
                                 {ENGINES.filter(
                                   (e) => engine === "all" || e === engine,
                                 ).map((e) => {
-                                  const run = runs.find(
-                                    (r) =>
-                                      r.prompt_id === p.id && r.engine === e,
-                                  );
+                                  const cellRuns = runs
+                                    .filter(
+                                      (r) =>
+                                        r.prompt_id === p.id && r.engine === e,
+                                    )
+                                    .sort(
+                                      (a, b) =>
+                                        new Date(b.created_at).getTime() -
+                                        new Date(a.created_at).getTime(),
+                                    );
                                   return (
                                     <td key={e}>
-                                      {run ? (
+                                      {cellRuns.length > 0 ? (
                                         <div
                                           style={{
                                             display: "flex",
-                                            alignItems: "center",
+                                            flexDirection: "column",
                                             gap: 6,
+                                            alignItems: "flex-start",
+                                          }}
+                                        >
+                                          {cellRuns.map((run) => (
+                                            <div
+                                              key={run.id}
+                                              style={{
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: 6,
+                                                flexWrap: "wrap",
+                                              }}
+                                            >
+                                              <button
+                                                className={`status status-button ${run.status}`}
+                                                onClick={() =>
+                                                  run.status === "pending"
+                                                    ? setEntry(run)
+                                                    : openDetail(run)
+                                                }
+                                              >
+                                                {run.status === "complete" ? (
+                                                  <Check size={12} />
+                                                ) : [
+                                                    "queued",
+                                                    "running",
+                                                    "capturing",
+                                                    "analyzing",
+                                                  ].includes(run.status) ? (
+                                                  <span className="live-dot" />
+                                                ) : run.status === "pending" ? (
+                                                  <Clock3 size={12} />
+                                                ) : null}
+                                                {run.status
+                                                  .replaceAll("_", " ")
+                                                  .charAt(0)
+                                                  .toUpperCase() +
+                                                  run.status
+                                                    .replaceAll("_", " ")
+                                                    .slice(1)}
+                                                {run.status === "complete" &&
+                                                  run.target_mentioned && (
+                                                    <span className="rank">
+                                                      {run.target_position
+                                                        ? `#${run.target_position}`
+                                                        : "Yes"}
+                                                    </span>
+                                                  )}
+                                                {run.collection_method === "api" && (
+                                                  <span
+                                                    style={{
+                                                      background: "#7928ca",
+                                                      color: "#fff",
+                                                      fontSize: 9,
+                                                      fontWeight: 700,
+                                                      padding: "1px 4px",
+                                                      borderRadius: 3,
+                                                      marginLeft: 4,
+                                                    }}
+                                                  >
+                                                    API
+                                                  </span>
+                                                )}
+                                                {run.collection_method === "ui" && (
+                                                  <span
+                                                    style={{
+                                                      background: "#0070f3",
+                                                      color: "#fff",
+                                                      fontSize: 9,
+                                                      fontWeight: 700,
+                                                      padding: "1px 4px",
+                                                      borderRadius: 3,
+                                                      marginLeft: 4,
+                                                    }}
+                                                  >
+                                                    UI
+                                                  </span>
+                                                )}
+                                              </button>
+                                            </div>
+                                          ))}
+                                          {e === "chatgpt" && (
+                                            <div
+                                              style={{
+                                                display: "flex",
+                                                gap: 4,
+                                                flexWrap: "wrap",
+                                                marginTop: 2,
+                                              }}
+                                            >
+                                              <button
+                                                className="run-api-check-btn"
+                                                title="Run official OpenAI API check with Web Search enabled"
+                                                style={{
+                                                  background: "#7928ca",
+                                                  color: "#fff",
+                                                  border: "none",
+                                                  borderRadius: 6,
+                                                  padding: "4px 8px",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                  cursor: "pointer",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: 4,
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                                disabled={apiRunningPromptId === p.id}
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  void triggerOpenAICheck(p.id);
+                                                }}
+                                              >
+                                                <Sparkles size={10} fill="currentColor" />
+                                                {apiRunningPromptId === p.id
+                                                  ? "Calling API…"
+                                                  : "Run OpenAI API Check"}
+                                              </button>
+                                              {cellRuns.some(
+                                                (r) =>
+                                                  r.collection_method !== "api" &&
+                                                  r.status === "pending",
+                                              ) && (
+                                                <button
+                                                  className="run-check-btn"
+                                                  title="Run automated check via Consumer UI"
+                                                  style={{
+                                                    background: "var(--primary, #1e3a2b)",
+                                                    color: "#fff",
+                                                    border: "none",
+                                                    borderRadius: 6,
+                                                    padding: "4px 8px",
+                                                    fontSize: 11,
+                                                    fontWeight: 600,
+                                                    cursor: "pointer",
+                                                    display: "inline-flex",
+                                                    alignItems: "center",
+                                                    gap: 4,
+                                                    whiteSpace: "nowrap",
+                                                  }}
+                                                  disabled={[
+                                                    "queued",
+                                                    "running",
+                                                    "capturing",
+                                                    "analyzing",
+                                                  ].includes(
+                                                    cellRuns.find(
+                                                      (r) => r.collection_method !== "api",
+                                                    )?.status || "",
+                                                  )}
+                                                  onClick={(evt) => {
+                                                    evt.stopPropagation();
+                                                    const uiRun =
+                                                      cellRuns.find(
+                                                        (r) => r.collection_method !== "api",
+                                                      ) || cellRuns[0];
+                                                    void triggerRunCheck(uiRun);
+                                                  }}
+                                                >
+                                                  <Play size={10} fill="currentColor" />
+                                                  Run UI Check
+                                                </button>
+                                              )}
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : (
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            flexDirection: "column",
+                                            gap: 4,
+                                            alignItems: "flex-start",
                                           }}
                                         >
                                           <button
-                                            className={`status status-button ${run.status}`}
-                                            onClick={() =>
-                                              run.status === "pending"
-                                                ? setEntry(run)
-                                                : openDetail(run)
-                                            }
+                                            className="status status-button pending"
+                                            title="Include this check in current cycle"
+                                            style={{
+                                              fontSize: 11,
+                                              cursor: "pointer",
+                                              whiteSpace: "nowrap",
+                                            }}
+                                            onClick={async () => {
+                                              try {
+                                                await supabase()
+                                                  .from("prompt_runs")
+                                                  .insert({
+                                                    tracking_cycle_id: cycleId,
+                                                    project_id: projectId,
+                                                    prompt_id: p.id,
+                                                    engine: e,
+                                                    prompt_snapshot: p.prompt,
+                                                    topic_snapshot: p.topic,
+                                                    status: "pending",
+                                                  });
+                                                await refresh(projectId);
+                                              } catch (err) {
+                                                setError(message(err));
+                                              }
+                                            }}
                                           >
-                                            {run.status === "complete" ? (
-                                              <Check size={12} />
-                                            ) : [
-                                                "queued",
-                                                "running",
-                                                "capturing",
-                                                "analyzing",
-                                              ].includes(run.status) ? (
-                                              <span className="live-dot" />
-                                            ) : run.status === "pending" ? (
-                                              <Clock3 size={12} />
-                                            ) : null}
-                                            {run.status
-                                              .replaceAll("_", " ")
-                                              .charAt(0)
-                                              .toUpperCase() +
-                                              run.status
-                                                .replaceAll("_", " ")
-                                                .slice(1)}
-                                            {run.status === "complete" &&
-                                              run.target_mentioned && (
-                                                <span className="rank">
-                                                  {run.target_position
-                                                    ? `#${run.target_position}`
-                                                    : "Yes"}
-                                                </span>
-                                              )}
+                                            + Add check
                                           </button>
                                           {e === "chatgpt" && (
                                             <button
-                                              className="run-check-btn"
-                                              title="Run automated check via Consumer UI"
+                                              className="run-api-check-btn"
+                                              title="Run official OpenAI API check with Web Search enabled"
                                               style={{
-                                                background: "var(--primary, #1e3a2b)",
+                                                background: "#7928ca",
                                                 color: "#fff",
                                                 border: "none",
                                                 borderRadius: 6,
@@ -1107,60 +1370,20 @@ export function Workspace({
                                                 gap: 4,
                                                 whiteSpace: "nowrap",
                                               }}
-                                              disabled={[
-                                                "queued",
-                                                "running",
-                                                "capturing",
-                                                "analyzing",
-                                              ].includes(run.status)}
+                                              disabled={apiRunningPromptId === p.id}
                                               onClick={(evt) => {
                                                 evt.stopPropagation();
-                                                void triggerRunCheck(run);
+                                                void triggerOpenAICheck(p.id);
                                               }}
                                             >
-                                              <Play size={10} fill="currentColor" />
-                                              {[
-                                                "queued",
-                                                "running",
-                                                "capturing",
-                                                "analyzing",
-                                              ].includes(run.status)
-                                                ? "Running…"
-                                                : "Run Check"}
+                                              <Sparkles size={10} fill="currentColor" />
+                                              {apiRunningPromptId === p.id
+                                                ? "Calling API…"
+                                                : "Run OpenAI API Check"}
                                             </button>
                                           )}
                                         </div>
-                                       ) : (
-                                         <button
-                                           className="status status-button pending"
-                                           title="Include this check in current cycle"
-                                           style={{
-                                             fontSize: 11,
-                                             cursor: "pointer",
-                                             whiteSpace: "nowrap",
-                                           }}
-                                           onClick={async () => {
-                                             try {
-                                               await supabase()
-                                                 .from("prompt_runs")
-                                                 .insert({
-                                                   tracking_cycle_id: cycleId,
-                                                   project_id: projectId,
-                                                   prompt_id: p.id,
-                                                   engine: e,
-                                                   prompt_snapshot: p.prompt,
-                                                   topic_snapshot: p.topic,
-                                                   status: "pending",
-                                                 });
-                                               await refresh(projectId);
-                                             } catch (err) {
-                                               setError(message(err));
-                                             }
-                                           }}
-                                         >
-                                           + Add check
-                                         </button>
-                                       )}
+                                      )}
                                     </td>
                                   );
                                 })}

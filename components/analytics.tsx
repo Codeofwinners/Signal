@@ -19,6 +19,7 @@ import {
   ExternalLink,
   ImageIcon,
   CheckCircle2,
+  Sparkles,
 } from "lucide-react";
 import {
   type ProjectData,
@@ -71,28 +72,33 @@ export function Overview({
   onPrompts: () => void;
 }) {
   const target = data.brands.find((b) => b.type === "target");
-  const m = metrics(runs, data.mentions, target?.id);
+  const consumerRuns = runs.filter((r) => r.collection_method !== "api");
+  const apiRuns = runs.filter((r) => r.collection_method === "api");
+  const m = metrics(consumerRuns, data.mentions, target?.id);
+  const apiM = metrics(apiRuns, data.mentions, target?.id);
   const index = data.cycles.findIndex((c) => c.id === cycle?.id);
   const prev = index >= 0 ? data.cycles[index + 1] : undefined;
   const previous = metrics(
-    data.runs.filter((r) => r.tracking_cycle_id === prev?.id),
+    data.runs.filter(
+      (r) => r.tracking_cycle_id === prev?.id && r.collection_method !== "api",
+    ),
     data.mentions,
     target?.id,
   );
   const change = percentageChange(m.visibility, previous.visibility);
-  const p = progress(runs);
-  const engines = engineMetrics(runs, data.mentions, target?.id);
-  const topics = [...new Set(runs.map((r) => r.topic_snapshot))].map(
+  const p = progress(consumerRuns);
+  const engines = engineMetrics(consumerRuns, data.mentions, target?.id);
+  const topics = [...new Set(consumerRuns.map((r) => r.topic_snapshot))].map(
     (topic) => ({
       topic,
       ...metrics(
-        runs.filter((r) => r.topic_snapshot === topic),
+        consumerRuns.filter((r) => r.topic_snapshot === topic),
         data.mentions,
         target?.id,
       ),
     }),
   );
-  const brandRows = brandMetrics(runs, data.mentions, data.brands);
+  const brandRows = brandMetrics(consumerRuns, data.mentions, data.brands);
   return (
     <>
       <div className="context-line">
@@ -153,6 +159,109 @@ export function Overview({
           </div>
         ))}
       </div>
+      {apiRuns.length > 0 && (
+        <div
+          style={{
+            background: "var(--card-bg, #fff)",
+            border: "1px solid #7928ca33",
+            borderRadius: 12,
+            padding: "16px 20px",
+            margin: "16px 0",
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span
+                style={{
+                  background: "#7928ca",
+                  color: "#fff",
+                  fontWeight: 700,
+                  fontSize: 11,
+                  padding: "2px 8px",
+                  borderRadius: 6,
+                }}
+              >
+                API
+              </span>
+              <strong style={{ fontSize: 15 }}>
+                OpenAI API Search Visibility (GPT-5.6 Luna)
+              </strong>
+              <span
+                style={{
+                  background: "#0e7b42",
+                  color: "#fff",
+                  fontWeight: 600,
+                  fontSize: 11,
+                  padding: "2px 6px",
+                  borderRadius: 4,
+                }}
+              >
+                Web Search: Enabled
+              </span>
+            </div>
+            <span style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+              Tracked independently from Consumer UI
+            </span>
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+                API Visibility
+              </div>
+              <strong style={{ fontSize: 20 }}>
+                {formatMetric(apiM.visibility)}
+              </strong>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+                Average Position
+              </div>
+              <strong style={{ fontSize: 20 }}>
+                {formatMetric(apiM.averagePosition, "")}
+              </strong>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+                Top 3 Presence
+              </div>
+              <strong style={{ fontSize: 20 }}>
+                {formatMetric(apiM.top3)}
+              </strong>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+                Citation Rate
+              </div>
+              <strong style={{ fontSize: 20 }}>
+                {formatMetric(apiM.citationRate)}
+              </strong>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: "var(--muted, #666)" }}>
+                Total API Runs
+              </div>
+              <strong style={{ fontSize: 20 }}>{apiRuns.length}</strong>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="progress-card">
         <div className="progress-title">
           <div className="progress-symbol">
@@ -717,11 +826,13 @@ export function ResultDetail({
   data,
   onEdit,
   onRunAutomated,
+  onRunOpenAI,
 }: {
   run: Run;
   data: ProjectData;
   onEdit: () => void;
   onRunAutomated?: (run: Run) => void;
+  onRunOpenAI?: (run: Run) => void;
 }) {
   const target = data.brands.find((b) => b.type === "target");
   const shots = useMemo(
@@ -730,6 +841,8 @@ export function ResultDetail({
   );
   const [images, setImages] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  const [showRawResponse, setShowRawResponse] = useState(true);
+
   useEffect(() => {
     let live = true;
     Promise.all(
@@ -764,7 +877,8 @@ export function ResultDetail({
         <div className="panel-heading">
           <div>
             <span className="eyebrow">
-              {ENGINE_NAMES[run.engine]} ·{" "}
+              {run.collection_method === "api" ? "OpenAI API" : ENGINE_NAMES[run.engine]}
+              {run.model ? ` (${run.model})` : ""} ·{" "}
               {run.checked_at
                 ? new Date(run.checked_at).toLocaleString()
                 : "Not checked"}
@@ -794,13 +908,32 @@ export function ResultDetail({
                 View Screenshot
               </a>
             )}
+            {onRunOpenAI && run.engine === "chatgpt" && (
+              <Button
+                variant="default"
+                style={{
+                  background: "#7928ca",
+                  borderColor: "#7928ca",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontWeight: 600,
+                }}
+                disabled={isAutomating}
+                onClick={() => onRunOpenAI(run)}
+              >
+                <Sparkles size={14} />
+                Run OpenAI API Check
+              </Button>
+            )}
             {onRunAutomated && run.engine === "chatgpt" && (
               <Button
                 variant={run.status === "complete" ? "outline" : "default"}
                 disabled={isAutomating}
                 onClick={() => onRunAutomated(run)}
               >
-                {isAutomating ? "Automating…" : "Run Check"}
+                {isAutomating ? "Automating…" : "Run UI Check"}
               </Button>
             )}
             <Button variant="outline" onClick={onEdit}>
@@ -821,7 +954,16 @@ export function ResultDetail({
           <span className="badge">
             Position: {run.target_position ? `#${run.target_position}` : "Unranked"}
           </span>
-          <span className="badge">
+          <span
+            className="badge"
+            style={
+              run.collection_method === "api"
+                ? { background: "#7928ca", color: "#fff", fontWeight: 700 }
+                : run.collection_method === "ui"
+                  ? { background: "#0070f3", color: "#fff", fontWeight: 700 }
+                  : {}
+            }
+          >
             Collection:{" "}
             {run.collection_method === "ui"
               ? "Consumer UI"
@@ -829,6 +971,29 @@ export function ResultDetail({
                 ? "API"
                 : "Manual"}
           </span>
+          {run.collection_method === "api" && (
+            <span
+              className="badge"
+              style={{ background: "#0e7b42", color: "#fff", fontWeight: 600 }}
+            >
+              Web Search: Enabled
+            </span>
+          )}
+          {run.model && (
+            <span className="badge">
+              Model: <strong>{run.model}</strong>
+            </span>
+          )}
+          {run.total_tokens !== null && run.total_tokens !== undefined && (
+            <span className="badge">
+              Tokens: {run.total_tokens}
+            </span>
+          )}
+          {run.estimated_cost !== null && run.estimated_cost !== undefined && (
+            <span className="badge">
+              Cost: ${run.estimated_cost.toFixed(4)}
+            </span>
+          )}
           {run.sentiment && (
             <span className={`badge sentiment-${run.sentiment}`}>
               Sentiment: {run.sentiment}
@@ -904,52 +1069,118 @@ export function ResultDetail({
           </div>
         </section>
       </div>
-      <section className="panel">
-        <div className="panel-heading">
-          <h3>Screenshot evidence</h3>
-          <ImageIcon size={18} />
-        </div>
-        {error && <p className="error">{error}</p>}
-        {shots.length ? (
-          <div className="screenshots">
-            {shots.map((s) =>
-              images[s.id] ? (
-                <a
-                  key={s.id}
-                  href={images[s.id]}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  <img
-                    src={images[s.id]}
-                    alt={`${ENGINE_NAMES[run.engine]} response screenshot`}
-                  />
-                </a>
-              ) : (
-                <p key={s.id}>Loading screenshot…</p>
-              ),
-            )}
+      {run.collection_method === "api" ? (
+        <section className="panel">
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow" style={{ color: "#7928ca", fontWeight: 700 }}>
+                API Evidence
+              </span>
+              <h3>OpenAI Responses API Result</h3>
+              <p style={{ margin: 0, fontSize: 13, color: "var(--muted, #666)" }}>
+                Official Response ID: <code>{run.response_id || "N/A"}</code> · Web Search Calls:{" "}
+                <strong>{run.web_search_calls ?? 0}</strong>
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <Button
+                variant="outline"
+                onClick={() => setShowRawResponse((v) => !v)}
+              >
+                {showRawResponse ? "Hide Raw Response" : "View Raw Response"}
+              </Button>
+            </div>
           </div>
-        ) : run.screenshot_url ? (
-          <div className="screenshots">
-            <a
-              href={run.screenshot_url}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <img
-                src={run.screenshot_url}
-                alt={`${ENGINE_NAMES[run.engine]} response proof screenshot`}
-              />
-            </a>
+          {showRawResponse && (
+            <div style={{ padding: "0 20px 20px 20px" }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  fontSize: 12,
+                  color: "var(--muted, #666)",
+                  marginBottom: 8,
+                }}
+              >
+                <span>
+                  Usage: {run.input_tokens ?? 0} prompt + {run.output_tokens ?? 0} completion ={" "}
+                  <strong>{run.total_tokens ?? 0} tokens</strong>
+                </span>
+                {run.estimated_cost !== null && run.estimated_cost !== undefined && (
+                  <span>
+                    Estimated Cost: <strong>${run.estimated_cost.toFixed(4)}</strong>
+                  </span>
+                )}
+              </div>
+              <pre
+                style={{
+                  background: "#161b22",
+                  color: "#e6edf3",
+                  padding: 16,
+                  borderRadius: 8,
+                  fontSize: 12,
+                  lineHeight: 1.6,
+                  overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  maxHeight: 500,
+                  fontFamily: "monospace",
+                  border: "1px solid #30363d",
+                }}
+              >
+                {run.raw_response_text || run.response_text || "No raw response recorded."}
+              </pre>
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="panel">
+          <div className="panel-heading">
+            <h3>Screenshot evidence</h3>
+            <ImageIcon size={18} />
           </div>
-        ) : (
-          <Empty
-            title="No screenshots attached"
-            description="Add evidence when correcting this result."
-          />
-        )}
-      </section>
+          {error && <p className="error">{error}</p>}
+          {shots.length ? (
+            <div className="screenshots">
+              {shots.map((s) =>
+                images[s.id] ? (
+                  <a
+                    key={s.id}
+                    href={images[s.id]}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <img
+                      src={images[s.id]}
+                      alt={`${ENGINE_NAMES[run.engine]} response screenshot`}
+                    />
+                  </a>
+                ) : (
+                  <p key={s.id}>Loading screenshot…</p>
+                ),
+              )}
+            </div>
+          ) : run.screenshot_url ? (
+            <div className="screenshots">
+              <a
+                href={run.screenshot_url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <img
+                  src={run.screenshot_url}
+                  alt={`${ENGINE_NAMES[run.engine]} response proof screenshot`}
+                />
+              </a>
+            </div>
+          ) : (
+            <Empty
+              title="No screenshots attached"
+              description="Add evidence when correcting this result."
+            />
+          )}
+        </section>
+      )}
     </>
   );
 }

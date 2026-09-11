@@ -8,9 +8,19 @@ export interface SaveAutomatedResultParams {
   analysis: VisionAnalysisResult;
   rawJson: unknown;
   status: "complete" | "needs_review" | "blocked" | "failed";
-  storagePath: string;
-  screenshotUrl: string;
+  storagePath?: string;
+  screenshotUrl?: string;
   responseText: string;
+  collectionMethod?: "ui" | "api" | "manual";
+  model?: string;
+  responseId?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  webSearchCalls?: number;
+  estimatedCost?: number;
+  rawResponseText?: string;
+  notes?: string;
 }
 
 /**
@@ -124,21 +134,33 @@ export async function saveAutomatedResult(
   // 4. Assemble payload
   const resultPayload = {
     status,
-    collection_method: "ui",
+    collection_method: params.collectionMethod || "ui",
     target_mentioned: analysis.target_brand_mentioned,
     target_position: analysis.target_brand_position,
     target_cited: citationsPayload.some((c) =>
-      c.domain.includes("laxcannabisclub"),
+      c.domain.includes("laxcannabisclub") || c.domain.includes("laxcc"),
     ),
     map_present: false,
     images_present: false,
     products_present: false,
     response_text: responseText,
-    notes: `Automated Consumer UI check on ChatGPT. Confidence: ${(analysis.confidence * 100).toFixed(0)}%.`,
+    notes:
+      params.notes ||
+      (params.collectionMethod === "api"
+        ? `OpenAI Responses API (${params.model || "gpt-5.6-luna"}) with Web Search. Cost: $${(params.estimatedCost ?? 0).toFixed(4)}.`
+        : `Automated Consumer UI check on ChatGPT. Confidence: ${(analysis.confidence * 100).toFixed(0)}%.`),
     sentiment: analysis.sentiment,
     confidence: analysis.confidence,
     raw_analysis_json: rawJson,
-    screenshot_url: screenshotUrl,
+    screenshot_url: screenshotUrl || null,
+    model: params.model || null,
+    response_id: params.responseId || null,
+    input_tokens: params.inputTokens ?? null,
+    output_tokens: params.outputTokens ?? null,
+    total_tokens: params.totalTokens ?? null,
+    web_search_calls: params.webSearchCalls ?? null,
+    estimated_cost: params.estimatedCost ?? null,
+    raw_response_text: params.rawResponseText || responseText,
     mentions: mentionsPayload,
     citations: citationsPayload,
   };

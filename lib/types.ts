@@ -87,6 +87,14 @@ export interface Run {
   confidence?: number | null;
   raw_analysis_json?: unknown;
   screenshot_url?: string | null;
+  model?: string | null;
+  response_id?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  total_tokens?: number | null;
+  web_search_calls?: number | null;
+  estimated_cost?: number | null;
+  raw_response_text?: string | null;
   created_at: string;
   updated_at: string;
 }

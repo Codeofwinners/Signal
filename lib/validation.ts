@@ -74,6 +74,14 @@ export const resultSchema = z
     confidence: z.number().min(0).max(1).nullable().optional(),
     raw_analysis_json: z.unknown().optional(),
     screenshot_url: z.string().nullable().optional(),
+    model: z.string().nullable().optional(),
+    response_id: z.string().nullable().optional(),
+    input_tokens: z.number().int().nullable().optional(),
+    output_tokens: z.number().int().nullable().optional(),
+    total_tokens: z.number().int().nullable().optional(),
+    web_search_calls: z.number().int().nullable().optional(),
+    estimated_cost: z.number().nullable().optional(),
+    raw_response_text: z.string().max(500000).nullable().optional(),
     mentions: z
       .array(
         z.object({
