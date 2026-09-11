@@ -93,6 +93,7 @@ export function Workspace({
   const [apiRunningPromptId, setApiRunningPromptId] = useState<string | null>(null);
   const [batchUiRunning, setBatchUiRunning] = useState(false);
   const [batchUiProgress, setBatchUiProgress] = useState<string | null>(null);
+  const [batchPacing, setBatchPacing] = useState<"demo" | "balanced" | "safe24h" | "turbo">("demo");
   const stopBatchUiRef = useRef(false);
   const [brandDetail, setBrandDetail] = useState<string | undefined>(
     initialBrandId,
@@ -303,13 +304,14 @@ export function Workspace({
             projectId: run.project_id || projectId,
             targetBrand,
             forceNew: shouldCreateNew,
+            pacing: batchPacing,
           }),
         });
 
         const result = await res.json();
         if (res.status === 429) {
           setNotice(
-            `⚠️ ${result.error || "Safety Rate Limit: Max 14 queries/hr reached to protect IP reputation."}`,
+            `⚠️ ${result.error || "Safety Rate Limit reached to protect IP reputation."}`,
           );
           return;
         }
@@ -327,7 +329,7 @@ export function Workspace({
         setError(message(err));
       }
     },
-    [cycleId, projectId, data.brands, session, refresh],
+    [cycleId, projectId, data.brands, session, refresh, batchPacing],
   );
 
   const stopBatchUiChecks = useCallback(() => {
@@ -381,6 +383,7 @@ export function Workspace({
             projectId,
             targetBrand,
             forceNew: true,
+            pacing: batchPacing,
           }),
         });
 
@@ -388,7 +391,7 @@ export function Workspace({
 
         if (res.status === 429) {
           setNotice(
-            `⚠️ ${result.error || "Safety Rate Limit: Max 14 queries/hr reached to protect IP reputation. Halting batch safely."}`,
+            `⚠️ ${result.error || "Safety Rate Limit reached to protect IP reputation. Halting batch safely."}`,
           );
           break;
         }
@@ -408,11 +411,19 @@ export function Workspace({
 
         // Add human-like jitter delay between queries if there are more prompts left and not stopped
         if (i < promptsToRun.length - 1 && !stopBatchUiRef.current) {
-          const jitterSec = Math.floor(Math.random() * 4) + 4; // 4 to 7 seconds natural jitter
+          let jitterSec = Math.floor(Math.random() * 4) + 4; // default demo: 4-7s
+          if (batchPacing === "balanced") {
+            jitterSec = Math.floor(Math.random() * 20) + 45; // 45-65s
+          } else if (batchPacing === "safe24h") {
+            jitterSec = Math.floor(Math.random() * 30) + 150; // 150-180s
+          } else if (batchPacing === "turbo") {
+            jitterSec = Math.floor(Math.random() * 15) + 20; // 20-35s
+          }
+
           for (let s = jitterSec; s > 0; s--) {
             if (stopBatchUiRef.current) break;
             setBatchUiProgress(
-              `Completed ${completed}/${promptsToRun.length}. Natural pacing delay: waiting ${s}s before next query (human jitter)…`,
+              `Completed ${completed}/${promptsToRun.length}. Pacing delay (${batchPacing}): waiting ${s}s before next query…`,
             );
             await new Promise((r) => setTimeout(r, 1000));
           }
@@ -421,7 +432,7 @@ export function Workspace({
 
       if (!stopBatchUiRef.current && completed > 0) {
         setNotice(
-          `✅ Batch UI run finished! Successfully executed ${completed} automated consumer check(s) within safety rate limits.`,
+          `✅ Batch UI run finished! Successfully executed ${completed} automated consumer check(s) within safety limits.`,
         );
       }
     } catch (err) {
@@ -431,7 +442,7 @@ export function Workspace({
       setBatchUiProgress(null);
       await refresh(projectId, true);
     }
-  }, [projectId, cycleId, data.prompts, data.brands, session, refresh]);
+  }, [projectId, cycleId, data.prompts, data.brands, session, refresh, batchPacing]);
 
   const triggerOpenAICheck = useCallback(
     async (promptId: string, runId?: string) => {
@@ -1217,6 +1228,29 @@ export function Workspace({
                     </>
                   )}
                 </Button>
+                <select
+                  aria-label="Pacing speed profile"
+                  value={batchPacing}
+                  onChange={(e) =>
+                    setBatchPacing(e.target.value as "demo" | "balanced" | "safe24h" | "turbo")
+                  }
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "6px 8px",
+                    borderRadius: 6,
+                    border: "1px solid var(--border)",
+                    background: "var(--background)",
+                    color: "var(--foreground)",
+                    cursor: "pointer",
+                  }}
+                  title="Pacing speed profile for automated consumer checks"
+                >
+                  <option value="demo">⚡ Demo Mode (4–7s delay)</option>
+                  <option value="balanced">🛡️ Daily 450 (60/hr • 7.5h)</option>
+                  <option value="safe24h">🌐 24h Safe (20/hr • 24h)</option>
+                  <option value="turbo">🚀 Turbo (120/hr • 3.8h)</option>
+                </select>
                 <span
                   style={{
                     display: "inline-flex",
@@ -1230,10 +1264,16 @@ export function Workspace({
                     border: "1px solid rgba(0, 112, 243, 0.2)",
                     color: "#0070f3",
                   }}
-                  title="Automated safety pacing prevents IP blocks: max 14 queries/hr per platform with 4-7s natural human jitter"
+                  title="Automated safety pacing prevents IP blocks while easily handling up to 450+ keywords daily"
                 >
                   <ShieldCheck size={14} />
-                  14/hr Safety Active
+                  {batchPacing === "demo"
+                    ? "Demo Pacing (4-7s)"
+                    : batchPacing === "balanced"
+                    ? "60/hr Safe (450 in 7.5h)"
+                    : batchPacing === "safe24h"
+                    ? "20/hr Safe (450 in 24h)"
+                    : "120/hr Turbo (3.8h)"}
                 </span>
               </div>
               {batchUiRunning && (

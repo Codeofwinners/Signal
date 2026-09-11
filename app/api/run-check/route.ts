@@ -18,11 +18,14 @@ export async function POST(request: Request) {
       forceNew = false,
       engine = "chatgpt",
       bypassRateLimit = false,
+      maxPerHour,
+      pacing,
     } = body;
 
-    // Enforce safety rate limit: max 14 queries per hour per engine
-    const { checkAndRecordRateLimit } = await import("@/services/rate-limiter");
-    const rateCheck = checkAndRecordRateLimit(engine, bypassRateLimit);
+    // Enforce safety rate limit with dynamic pacing support
+    const { checkAndRecordRateLimit, PACING_PRESETS } = await import("@/services/rate-limiter");
+    const requestedLimit = maxPerHour || (pacing && (PACING_PRESETS as any)[pacing]?.maxPerHour);
+    const rateCheck = checkAndRecordRateLimit(engine, bypassRateLimit, requestedLimit);
     if (!rateCheck.allowed) {
       return NextResponse.json(
         {
