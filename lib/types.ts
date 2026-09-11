@@ -6,7 +6,21 @@ export const ENGINE_NAMES: Record<Engine, string> = {
   perplexity: "Perplexity",
   claude: "Claude",
 };
-export type RunStatus = "pending" | "complete" | "skipped" | "error";
+export type RunStatus =
+  | "pending"
+  | "queued"
+  | "running"
+  | "capturing"
+  | "analyzing"
+  | "complete"
+  | "blocked"
+  | "needs_review"
+  | "failed"
+  | "skipped"
+  | "error";
+
+export type CollectionMethod = "ui" | "api" | "manual";
+export type Sentiment = "positive" | "neutral" | "negative";
 export interface Project {
   id: string;
   owner_id: string;
@@ -68,6 +82,11 @@ export interface Run {
   products_present: boolean;
   notes: string;
   checked_at: string | null;
+  collection_method?: CollectionMethod;
+  sentiment?: Sentiment | null;
+  confidence?: number | null;
+  raw_analysis_json?: unknown;
+  screenshot_url?: string | null;
   created_at: string;
   updated_at: string;
 }

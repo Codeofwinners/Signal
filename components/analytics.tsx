@@ -716,11 +716,14 @@ export function ResultDetail({
   run,
   data,
   onEdit,
+  onRunAutomated,
 }: {
   run: Run;
   data: ProjectData;
   onEdit: () => void;
+  onRunAutomated?: (run: Run) => void;
 }) {
+  const target = data.brands.find((b) => b.type === "target");
   const shots = useMemo(
     () => data.screenshots.filter((s) => s.prompt_run_id === run.id),
     [data.screenshots, run.id],
@@ -742,6 +745,19 @@ export function ResultDetail({
       live = false;
     };
   }, [shots]);
+
+  const activeProofUrl =
+    shots.length > 0 && images[shots[0].id]
+      ? images[shots[0].id]
+      : run.screenshot_url || undefined;
+
+  const isAutomating = [
+    "queued",
+    "running",
+    "capturing",
+    "analyzing",
+  ].includes(run.status);
+
   return (
     <>
       <section className="panel">
@@ -755,18 +771,74 @@ export function ResultDetail({
             </span>
             <h2>{run.prompt_snapshot}</h2>
           </div>
-          <Button variant="outline" onClick={onEdit}>
-            Correct result
-          </Button>
+          <div className="heading-actions">
+            {activeProofUrl && (
+              <a
+                href={activeProofUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-outline"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 13,
+                  padding: "6px 12px",
+                  borderRadius: 6,
+                  border: "1px solid var(--border, #d8ddd9)",
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
+              >
+                <ExternalLink size={14} />
+                View Screenshot
+              </a>
+            )}
+            {onRunAutomated && run.engine === "chatgpt" && (
+              <Button
+                variant={run.status === "complete" ? "outline" : "default"}
+                disabled={isAutomating}
+                onClick={() => onRunAutomated(run)}
+              >
+                {isAutomating ? "Automating…" : "Run Check"}
+              </Button>
+            )}
+            <Button variant="outline" onClick={onEdit}>
+              Correct result
+            </Button>
+          </div>
         </div>
         <div className="detail-badges">
-          <span className={`status ${run.status}`}>{run.status}</span>
-          <span className="badge">
-            Target mentioned: {run.target_mentioned ? "Yes" : "No"}
+          <span className={`status ${run.status}`}>
+            {run.status.replaceAll("_", " ")}
           </span>
           <span className="badge">
-            Position: {run.target_position ?? "Unranked"}
+            Target: <strong>{target?.name ?? "Target brand"}</strong>
           </span>
+          <span className="badge">
+            Mentioned: {run.target_mentioned ? "Yes" : "No"}
+          </span>
+          <span className="badge">
+            Position: {run.target_position ? `#${run.target_position}` : "Unranked"}
+          </span>
+          <span className="badge">
+            Collection:{" "}
+            {run.collection_method === "ui"
+              ? "Consumer UI"
+              : run.collection_method === "api"
+                ? "API"
+                : "Manual"}
+          </span>
+          {run.sentiment && (
+            <span className={`badge sentiment-${run.sentiment}`}>
+              Sentiment: {run.sentiment}
+            </span>
+          )}
+          {run.confidence !== undefined && run.confidence !== null && (
+            <span className="badge">
+              Confidence: {(run.confidence * 100).toFixed(0)}%
+            </span>
+          )}
           <span className="badge">
             Cited: {run.target_cited ? "Yes" : "No"}
           </span>
@@ -850,13 +922,26 @@ export function ResultDetail({
                 >
                   <img
                     src={images[s.id]}
-                    alt={`Manual ${ENGINE_NAMES[run.engine]} response screenshot`}
+                    alt={`${ENGINE_NAMES[run.engine]} response screenshot`}
                   />
                 </a>
               ) : (
                 <p key={s.id}>Loading screenshot…</p>
               ),
             )}
+          </div>
+        ) : run.screenshot_url ? (
+          <div className="screenshots">
+            <a
+              href={run.screenshot_url}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <img
+                src={run.screenshot_url}
+                alt={`${ENGINE_NAMES[run.engine]} response proof screenshot`}
+              />
+            </a>
           </div>
         ) : (
           <Empty

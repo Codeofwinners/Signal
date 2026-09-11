@@ -32,7 +32,15 @@ export function ResultEntry({
   const target = data.brands.find((b) => b.type === "target")!;
   const [brands, setBrands] = useState(data.brands);
   const [value, setValue] = useState<ResultInput>({
-    status: run.status === "pending" ? "complete" : run.status,
+    status: [
+      "pending",
+      "queued",
+      "running",
+      "capturing",
+      "analyzing",
+    ].includes(run.status)
+      ? "complete"
+      : (run.status as ResultInput["status"]),
     target_mentioned: run.target_mentioned,
     target_position: run.target_position,
     target_cited: run.target_cited,

@@ -53,7 +53,14 @@ export const cycleSchema = z.object({
 const position = z.number().int().min(1).max(10000).nullable();
 export const resultSchema = z
   .object({
-    status: z.enum(["complete", "skipped", "error"]),
+    status: z.enum([
+      "complete",
+      "needs_review",
+      "blocked",
+      "failed",
+      "skipped",
+      "error",
+    ]),
     target_mentioned: z.boolean(),
     target_position: position,
     target_cited: z.boolean(),
@@ -62,6 +69,11 @@ export const resultSchema = z
     products_present: z.boolean(),
     response_text: z.string().max(200000),
     notes: z.string().max(10000),
+    collection_method: z.enum(["ui", "api", "manual"]).optional(),
+    sentiment: z.enum(["positive", "neutral", "negative"]).nullable().optional(),
+    confidence: z.number().min(0).max(1).nullable().optional(),
+    raw_analysis_json: z.unknown().optional(),
+    screenshot_url: z.string().nullable().optional(),
     mentions: z
       .array(
         z.object({
@@ -102,6 +114,26 @@ export const resultSchema = z
       });
   });
 export type ResultInput = z.infer<typeof resultSchema>;
+
+export const visionAnalysisSchema = z.object({
+  target_brand_mentioned: z.boolean(),
+  target_brand_position: z.number().int().min(1).max(10000).nullable(),
+  brands_in_order: z.array(
+    z.object({
+      brand: z.string().trim().min(1),
+      position: z.number().int().min(1).max(10000),
+    }),
+  ),
+  citations: z.array(
+    z.object({
+      domain: z.string(),
+      url: z.string().nullable().optional(),
+    }),
+  ),
+  sentiment: z.enum(["positive", "neutral", "negative"]),
+  confidence: z.number().min(0).max(1),
+});
+export type VisionAnalysisResult = z.infer<typeof visionAnalysisSchema>;
 export function message(error: unknown) {
   return error instanceof z.ZodError
     ? error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")

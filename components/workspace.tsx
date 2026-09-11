@@ -23,6 +23,7 @@ import {
   MoreHorizontal,
   ExternalLink,
   Settings2,
+  Play,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -263,6 +264,62 @@ export function Workspace({
     setBrandDetail(id);
     window.history.pushState(null, "", `/projects/${projectId}/brands/${id}`);
   }
+  const triggerRunCheck = useCallback(
+    async (run: Run) => {
+      try {
+        const targetBrand =
+          data.brands.find((b) => b.type === "target")?.name ||
+          "LAX Cannabis Club";
+        setNotice(
+          `Starting automated Consumer UI check on ChatGPT for "${run.prompt_snapshot}"…`,
+        );
+        setData((prev) => ({
+          ...prev,
+          runs: prev.runs.map((r) =>
+            r.id === run.id
+              ? { ...r, status: "queued", collection_method: "ui" }
+              : r,
+          ),
+        }));
+
+        const res = await fetch("/api/run-check", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: session?.access_token
+              ? `Bearer ${session.access_token}`
+              : "",
+          },
+          body: JSON.stringify({
+            runId: run.id,
+            targetBrand,
+          }),
+        });
+
+        if (!res.ok) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || "Failed to trigger automated check");
+        }
+      } catch (err) {
+        setError(message(err));
+      }
+    },
+    [data.brands, session],
+  );
+
+  useEffect(() => {
+    const hasActiveRun = data.runs.some((r) =>
+      ["queued", "running", "capturing", "analyzing"].includes(r.status),
+    );
+    if (!hasActiveRun || !projectId) return;
+
+    const timer = setInterval(() => {
+      void refresh(projectId);
+    }, 2500);
+
+    return () => clearInterval(timer);
+  }, [data.runs, projectId, refresh]);
+
   function go(next: Tab) {
     window.history.replaceState(null, "", "/");
     setTab(next);
@@ -738,6 +795,7 @@ export function Workspace({
               run={detail}
               data={data}
               onEdit={() => setEntry(detail)}
+              onRunAutomated={(r) => void triggerRunCheck(r)}
             />
           ) : brandDetail ? (
             <>
@@ -964,30 +1022,90 @@ export function Workspace({
                                   return (
                                     <td key={e}>
                                       {run ? (
-                                        <button
-                                          className={`status status-button ${run.status}`}
-                                          onClick={() =>
-                                            run.status === "pending"
-                                              ? setEntry(run)
-                                              : openDetail(run)
-                                          }
+                                        <div
+                                          style={{
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                          }}
                                         >
-                                          {run.status === "complete" ? (
-                                            <Check size={12} />
-                                          ) : run.status === "pending" ? (
-                                            <Clock3 size={12} />
-                                          ) : null}
-                                          {run.status.charAt(0).toUpperCase() +
-                                            run.status.slice(1)}
-                                          {run.status === "complete" &&
-                                            run.target_mentioned && (
-                                              <span className="rank">
-                                                {run.target_position
-                                                  ? `#${run.target_position}`
-                                                  : "Yes"}
-                                              </span>
-                                            )}
-                                        </button>
+                                          <button
+                                            className={`status status-button ${run.status}`}
+                                            onClick={() =>
+                                              run.status === "pending"
+                                                ? setEntry(run)
+                                                : openDetail(run)
+                                            }
+                                          >
+                                            {run.status === "complete" ? (
+                                              <Check size={12} />
+                                            ) : [
+                                                "queued",
+                                                "running",
+                                                "capturing",
+                                                "analyzing",
+                                              ].includes(run.status) ? (
+                                              <span className="live-dot" />
+                                            ) : run.status === "pending" ? (
+                                              <Clock3 size={12} />
+                                            ) : null}
+                                            {run.status
+                                              .replaceAll("_", " ")
+                                              .charAt(0)
+                                              .toUpperCase() +
+                                              run.status
+                                                .replaceAll("_", " ")
+                                                .slice(1)}
+                                            {run.status === "complete" &&
+                                              run.target_mentioned && (
+                                                <span className="rank">
+                                                  {run.target_position
+                                                    ? `#${run.target_position}`
+                                                    : "Yes"}
+                                                </span>
+                                              )}
+                                          </button>
+                                          {e === "chatgpt" && (
+                                            <button
+                                              className="run-check-btn"
+                                              title="Run automated check via Consumer UI"
+                                              style={{
+                                                background: "var(--primary, #1e3a2b)",
+                                                color: "#fff",
+                                                border: "none",
+                                                borderRadius: 6,
+                                                padding: "4px 8px",
+                                                fontSize: 11,
+                                                fontWeight: 600,
+                                                cursor: "pointer",
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                gap: 4,
+                                                whiteSpace: "nowrap",
+                                              }}
+                                              disabled={[
+                                                "queued",
+                                                "running",
+                                                "capturing",
+                                                "analyzing",
+                                              ].includes(run.status)}
+                                              onClick={(evt) => {
+                                                evt.stopPropagation();
+                                                void triggerRunCheck(run);
+                                              }}
+                                            >
+                                              <Play size={10} fill="currentColor" />
+                                              {[
+                                                "queued",
+                                                "running",
+                                                "capturing",
+                                                "analyzing",
+                                              ].includes(run.status)
+                                                ? "Running…"
+                                                : "Run Check"}
+                                            </button>
+                                          )}
+                                        </div>
                                       ) : (
                                         <span className="muted small">
                                           Not in cycle

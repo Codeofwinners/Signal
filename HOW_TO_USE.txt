@@ -133,9 +133,32 @@ STEP F: EXPORT REPORTS
     These are safely excluded from denominators so they don't penalize visibility.
 
 --------------------------------------------------------------------------------
-5. TECHNICAL & DEPLOYMENT REFERENCE
+5. AUTOMATED CONSUMER UI COLLECTION (CHATGPT)
+--------------------------------------------------------------------------------
+Signal supports automated collection for ChatGPT without using any AI provider APIs:
+  • Methodology: Automated Playwright Chromium browser opens a fresh, logged-out
+    session on chatgpt.com (en-US, America/Los_Angeles, 1440x1200).
+  • Prompt Submission: Submits the stored prompt into the consumer interface.
+  • Generation Detection: Watches the UI until response generation completes.
+  • Screenshot Capture: Permanently captures and stores the full response proof.
+  • Vision AI Analysis: Uses internal multimodal analysis to extract target brand
+    visibility, competitor ranking order, citations, sentiment, and confidence.
+  • Triggering a Check: In the Prompts table, click the "Run Check" button next to
+    any ChatGPT cell.
+  • Progress Tracking: The cell updates automatically:
+      Queued → Running → Capturing → Analyzing → Complete
+  • Proof Verification: Open the result to inspect the "View Screenshot" link and
+    embedded proof image.
+  • Graceful Fallback: If ChatGPT presents a CAPTCHA, rate limit, or login wall,
+    Signal stops without circumvention and marks the run as 'blocked' or 'needs_review'.
+    The manual entry workflow remains fully functional as a fallback.
+
+--------------------------------------------------------------------------------
+6. TECHNICAL & DEPLOYMENT REFERENCE
 --------------------------------------------------------------------------------
   • Framework: Next.js 16 (Turbopack, App Router), React 19, TypeScript, Tailwind 4.
+  • Automation Worker: Playwright Chromium, headless browser automation.
+  • Vision Analyzer: Gemini Vision API for screenshot analysis only.
   • Backend: Supabase Auth, PostgreSQL with Row Level Security (RLS), Supabase Storage.
   • Hosting: Netlify (Next.js Runtime v5, Node 24).
   • Redeploying from CLI:

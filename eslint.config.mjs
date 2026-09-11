@@ -4,6 +4,6 @@ import ts from "eslint-config-next/typescript";
 export default defineConfig([
   ...next,
   ...ts,
-  globalIgnores([".next/**", "next-env.d.ts"]),
+  globalIgnores([".next/**", ".netlify/**", "next-env.d.ts"]),
   { rules: { "@next/next/no-img-element": "off" } },
 ]);
