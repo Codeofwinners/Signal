@@ -861,6 +861,7 @@ export function Workspace({
               onEdit={() => setEntry(data.runs.find((r) => r.id === detail.id) || detail)}
               onRunAutomated={(r) => void triggerRunCheck(r)}
               onRunOpenAI={(r) => void triggerOpenAICheck(r.prompt_id, r.id)}
+              onSelectRun={openDetail}
             />
           ) : brandDetail ? (
             <>
@@ -1140,6 +1141,8 @@ export function Workspace({
                                         new Date(b.created_at).getTime() -
                                         new Date(a.created_at).getTime(),
                                     );
+                                  const latestRun = cellRuns[0];
+                                  const hasMultiple = cellRuns.length > 1;
                                   return (
                                     <td key={e}>
                                       {cellRuns.length > 0 ? (
@@ -1151,84 +1154,102 @@ export function Workspace({
                                             alignItems: "flex-start",
                                           }}
                                         >
-                                          {cellRuns.map((run) => (
-                                            <div
-                                              key={run.id}
-                                              style={{
-                                                display: "flex",
-                                                alignItems: "center",
-                                                gap: 6,
-                                                flexWrap: "wrap",
-                                              }}
+                                          <div
+                                            style={{
+                                              display: "flex",
+                                              alignItems: "center",
+                                              gap: 6,
+                                              flexWrap: "wrap",
+                                            }}
+                                          >
+                                            <button
+                                              className={`status status-button ${latestRun.status}`}
+                                              onClick={() =>
+                                                latestRun.status === "pending"
+                                                  ? setEntry(latestRun)
+                                                  : openDetail(latestRun)
+                                              }
                                             >
-                                              <button
-                                                className={`status status-button ${run.status}`}
-                                                onClick={() =>
-                                                  run.status === "pending"
-                                                    ? setEntry(run)
-                                                    : openDetail(run)
-                                                }
-                                              >
-                                                {run.status === "complete" ? (
-                                                  <Check size={12} />
-                                                ) : [
-                                                    "queued",
-                                                    "running",
-                                                    "capturing",
-                                                    "analyzing",
-                                                  ].includes(run.status) ? (
-                                                  <span className="live-dot" />
-                                                ) : run.status === "pending" ? (
-                                                  <Clock3 size={12} />
-                                                ) : null}
-                                                {run.status
+                                              {latestRun.status === "complete" ? (
+                                                <Check size={12} />
+                                              ) : [
+                                                  "queued",
+                                                  "running",
+                                                  "capturing",
+                                                  "analyzing",
+                                                ].includes(latestRun.status) ? (
+                                                <span className="live-dot" />
+                                              ) : latestRun.status === "pending" ? (
+                                                <Clock3 size={12} />
+                                              ) : null}
+                                              {latestRun.status
+                                                .replaceAll("_", " ")
+                                                .charAt(0)
+                                                .toUpperCase() +
+                                                latestRun.status
                                                   .replaceAll("_", " ")
-                                                  .charAt(0)
-                                                  .toUpperCase() +
-                                                  run.status
-                                                    .replaceAll("_", " ")
-                                                    .slice(1)}
-                                                {run.status === "complete" &&
-                                                  run.target_mentioned && (
-                                                    <span className="rank">
-                                                      {run.target_position
-                                                        ? `#${run.target_position}`
-                                                        : "Yes"}
-                                                    </span>
-                                                  )}
-                                                {run.collection_method === "api" && (
-                                                  <span
-                                                    style={{
-                                                      background: "#7928ca",
-                                                      color: "#fff",
-                                                      fontSize: 9,
-                                                      fontWeight: 700,
-                                                      padding: "1px 4px",
-                                                      borderRadius: 3,
-                                                      marginLeft: 4,
-                                                    }}
-                                                  >
-                                                    API
+                                                  .slice(1)}
+                                              {latestRun.status === "complete" &&
+                                                latestRun.target_mentioned && (
+                                                  <span className="rank">
+                                                    {latestRun.target_position
+                                                      ? `#${latestRun.target_position}`
+                                                      : "Yes"}
                                                   </span>
                                                 )}
-                                                {run.collection_method === "ui" && (
-                                                  <span
-                                                    style={{
-                                                      background: "#0070f3",
-                                                      color: "#fff",
-                                                      fontSize: 9,
-                                                      fontWeight: 700,
-                                                      padding: "1px 4px",
-                                                      borderRadius: 3,
-                                                      marginLeft: 4,
-                                                    }}
-                                                  >
-                                                    UI
-                                                  </span>
-                                                )}
+                                              {latestRun.collection_method === "api" && (
+                                                <span
+                                                  style={{
+                                                    background: "#7928ca",
+                                                    color: "#fff",
+                                                    fontSize: 9,
+                                                    fontWeight: 700,
+                                                    padding: "1px 4px",
+                                                    borderRadius: 3,
+                                                    marginLeft: 4,
+                                                  }}
+                                                >
+                                                  API
+                                                </span>
+                                              )}
+                                              {latestRun.collection_method === "ui" && (
+                                                <span
+                                                  style={{
+                                                    background: "#0070f3",
+                                                    color: "#fff",
+                                                    fontSize: 9,
+                                                    fontWeight: 700,
+                                                    padding: "1px 4px",
+                                                    borderRadius: 3,
+                                                    marginLeft: 4,
+                                                  }}
+                                                >
+                                                  UI
+                                                </span>
+                                              )}
+                                            </button>
+                                            {hasMultiple && (
+                                              <button
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  openDetail(latestRun);
+                                                }}
+                                                title={`Click to view all ${cellRuns.length} runs recorded in this cycle`}
+                                                style={{
+                                                  border: "none",
+                                                  background: "rgba(0,0,0,0.06)",
+                                                  color: "var(--muted, #666)",
+                                                  fontSize: 10,
+                                                  fontWeight: 600,
+                                                  padding: "2px 6px",
+                                                  borderRadius: 4,
+                                                  cursor: "pointer",
+                                                }}
+                                              >
+                                                {cellRuns.length} runs
                                               </button>
-                                            </div>
-                                          ))}
+                                            )}
+                                          </div>
                                           {e === "chatgpt" && (
                                             <div
                                               style={{

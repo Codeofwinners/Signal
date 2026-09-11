@@ -827,12 +827,14 @@ export function ResultDetail({
   onEdit,
   onRunAutomated,
   onRunOpenAI,
+  onSelectRun,
 }: {
   run: Run;
   data: ProjectData;
   onEdit: () => void;
   onRunAutomated?: (run: Run) => void;
   onRunOpenAI?: (run: Run) => void;
+  onSelectRun?: (run: Run) => void;
 }) {
   const target = data.brands.find((b) => b.type === "target");
   const shots = useMemo(
@@ -842,6 +844,15 @@ export function ResultDetail({
   const [images, setImages] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [showRawResponse, setShowRawResponse] = useState(true);
+
+  const siblingRuns = useMemo(() => {
+    return data.runs
+      .filter((r) => r.prompt_id === run.prompt_id && r.engine === run.engine)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+  }, [data.runs, run.prompt_id, run.engine]);
 
   useEffect(() => {
     let live = true;
@@ -874,6 +885,67 @@ export function ResultDetail({
   return (
     <>
       <section className="panel">
+        {siblingRuns.length > 1 && (
+          <div
+            style={{
+              padding: "10px 16px",
+              background: "var(--background-secondary, #f7f9f8)",
+              borderBottom: "1px solid var(--border, #e5e8e6)",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexWrap: "wrap",
+            }}
+          >
+            <span
+              style={{
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--muted, #666)",
+              }}
+            >
+              Run History ({siblingRuns.length} checks):
+            </span>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {siblingRuns.map((sr, idx) => {
+                const isCurrent = sr.id === run.id;
+                return (
+                  <button
+                    key={sr.id}
+                    type="button"
+                    onClick={() => onSelectRun?.(sr)}
+                    style={{
+                      padding: "4px 9px",
+                      borderRadius: 6,
+                      fontSize: 11,
+                      fontWeight: isCurrent ? 700 : 500,
+                      border: isCurrent
+                        ? "1px solid var(--primary, #1e3a2b)"
+                        : "1px solid var(--border, #d8ddd9)",
+                      background: isCurrent ? "var(--primary, #1e3a2b)" : "#fff",
+                      color: isCurrent ? "#fff" : "var(--foreground, #111)",
+                      cursor: isCurrent ? "default" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span>
+                      Check #{siblingRuns.length - idx}
+                      {idx === 0 ? " (Latest)" : ""}
+                    </span>
+                    <span style={{ opacity: 0.85, fontSize: 10 }}>
+                      {sr.collection_method === "api" ? "• API" : "• UI"}
+                      {sr.target_mentioned
+                        ? ` (#${sr.target_position ?? "Yes"})`
+                        : " (No)"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div className="panel-heading">
           <div>
             <span className="eyebrow">
