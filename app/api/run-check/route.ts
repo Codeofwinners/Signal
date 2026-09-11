@@ -16,7 +16,26 @@ export async function POST(request: Request) {
       projectId,
       targetBrand = "LAX Cannabis Club",
       forceNew = false,
+      engine = "chatgpt",
+      bypassRateLimit = false,
     } = body;
+
+    // Enforce safety rate limit: max 14 queries per hour per engine
+    const { checkAndRecordRateLimit } = await import("@/services/rate-limiter");
+    const rateCheck = checkAndRecordRateLimit(engine, bypassRateLimit);
+    if (!rateCheck.allowed) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: rateCheck.message,
+          rateLimited: true,
+          retryAfterSec: rateCheck.retryAfterSec,
+          currentCount: rateCheck.currentCount,
+          maxPerHour: rateCheck.maxPerHour,
+        },
+        { status: 429 },
+      );
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;

@@ -26,6 +26,8 @@ import {
   Play,
   Sparkles,
   Camera,
+  ShieldCheck,
+  Square,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -89,6 +91,9 @@ export function Workspace({
   const [entry, setEntry] = useState<Run>();
   const [detail, setDetail] = useState<Run>();
   const [apiRunningPromptId, setApiRunningPromptId] = useState<string | null>(null);
+  const [batchUiRunning, setBatchUiRunning] = useState(false);
+  const [batchUiProgress, setBatchUiProgress] = useState<string | null>(null);
+  const stopBatchUiRef = useRef(false);
   const [brandDetail, setBrandDetail] = useState<string | undefined>(
     initialBrandId,
   );
@@ -302,6 +307,12 @@ export function Workspace({
         });
 
         const result = await res.json();
+        if (res.status === 429) {
+          setNotice(
+            `⚠️ ${result.error || "Safety Rate Limit: Max 14 queries/hr reached to protect IP reputation."}`,
+          );
+          return;
+        }
         if (!res.ok || !result.success) {
           throw new Error(result.error || "Failed to execute automated check");
         }
@@ -318,6 +329,109 @@ export function Workspace({
     },
     [cycleId, projectId, data.brands, session, refresh],
   );
+
+  const stopBatchUiChecks = useCallback(() => {
+    stopBatchUiRef.current = true;
+    setNotice("Stopping automated UI check batch after current query completes…");
+  }, []);
+
+  const triggerRunAllUIChecks = useCallback(async () => {
+    if (!projectId || !cycleId) {
+      setNotice("Please create or select an active tracking cycle first.");
+      return;
+    }
+    const promptsToRun = data.prompts;
+    if (!promptsToRun.length) {
+      setNotice("No prompts found to run checks on.");
+      return;
+    }
+
+    setBatchUiRunning(true);
+    stopBatchUiRef.current = false;
+    const targetBrand =
+      data.brands.find((b) => b.type === "target")?.name ||
+      "LAX Cannabis Club";
+
+    let completed = 0;
+    try {
+      for (let i = 0; i < promptsToRun.length; i++) {
+        if (stopBatchUiRef.current) {
+          setNotice(
+            `Batch UI run stopped by user. (${completed}/${promptsToRun.length} completed)`,
+          );
+          break;
+        }
+
+        const p = promptsToRun[i];
+        setBatchUiProgress(
+          `Running Consumer UI check ${i + 1} of ${promptsToRun.length}: "${p.prompt}"…`,
+        );
+
+        const res = await fetch("/api/run-check", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: session?.access_token
+              ? `Bearer ${session.access_token}`
+              : "",
+          },
+          body: JSON.stringify({
+            promptId: p.id,
+            cycleId,
+            projectId,
+            targetBrand,
+            forceNew: true,
+          }),
+        });
+
+        const result = await res.json();
+
+        if (res.status === 429) {
+          setNotice(
+            `⚠️ ${result.error || "Safety Rate Limit: Max 14 queries/hr reached to protect IP reputation. Halting batch safely."}`,
+          );
+          break;
+        }
+
+        if (!res.ok || !result.success) {
+          console.warn(
+            `[Batch UI] Error on prompt "${p.prompt}":`,
+            result.error,
+          );
+          setNotice(
+            `Notice: "${p.prompt}" check issue: ${result.error || "Unknown error"}. Continuing...`,
+          );
+        } else {
+          completed++;
+          await refresh(projectId, true);
+        }
+
+        // Add human-like jitter delay between queries if there are more prompts left and not stopped
+        if (i < promptsToRun.length - 1 && !stopBatchUiRef.current) {
+          const jitterSec = Math.floor(Math.random() * 4) + 4; // 4 to 7 seconds natural jitter
+          for (let s = jitterSec; s > 0; s--) {
+            if (stopBatchUiRef.current) break;
+            setBatchUiProgress(
+              `Completed ${completed}/${promptsToRun.length}. Natural pacing delay: waiting ${s}s before next query (human jitter)…`,
+            );
+            await new Promise((r) => setTimeout(r, 1000));
+          }
+        }
+      }
+
+      if (!stopBatchUiRef.current && completed > 0) {
+        setNotice(
+          `✅ Batch UI run finished! Successfully executed ${completed} automated consumer check(s) within safety rate limits.`,
+        );
+      }
+    } catch (err) {
+      setError(message(err));
+    } finally {
+      setBatchUiRunning(false);
+      setBatchUiProgress(null);
+      await refresh(projectId, true);
+    }
+  }, [projectId, cycleId, data.prompts, data.brands, session, refresh]);
 
   const triggerOpenAICheck = useCallback(
     async (promptId: string, runId?: string) => {
@@ -1076,7 +1190,94 @@ export function Workspace({
                     Run OpenAI API Check
                   </Button>
                 )}
+                <Button
+                  variant="default"
+                  onClick={batchUiRunning ? stopBatchUiChecks : triggerRunAllUIChecks}
+                  disabled={data.prompts.length === 0}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontWeight: 700,
+                    background: batchUiRunning ? "#e00" : "#0070f3",
+                    borderColor: batchUiRunning ? "#e00" : "#0070f3",
+                    color: "#fff",
+                  }}
+                  title="Run automated Consumer UI check across all active prompts with stealth & 14/hr rate safety"
+                >
+                  {batchUiRunning ? (
+                    <>
+                      <Square size={12} fill="currentColor" />
+                      Stop UI Batch
+                    </>
+                  ) : (
+                    <>
+                      <Camera size={13} />
+                      Run UI Checker on All ({data.prompts.length})
+                    </>
+                  )}
+                </Button>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    padding: "6px 10px",
+                    borderRadius: 6,
+                    background: "rgba(0, 112, 243, 0.08)",
+                    border: "1px solid rgba(0, 112, 243, 0.2)",
+                    color: "#0070f3",
+                  }}
+                  title="Automated safety pacing prevents IP blocks: max 14 queries/hr per platform with 4-7s natural human jitter"
+                >
+                  <ShieldCheck size={14} />
+                  14/hr Safety Active
+                </span>
               </div>
+              {batchUiRunning && (
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 16px",
+                    margin: "12px 0",
+                    background: "rgba(0, 112, 243, 0.08)",
+                    border: "1px solid rgba(0, 112, 243, 0.3)",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    color: "#0070f3",
+                    fontWeight: 600,
+                  }}
+                >
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                    <span
+                      style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: "50%",
+                        background: "#0070f3",
+                        boxShadow: "0 0 8px #0070f3",
+                      }}
+                    />
+                    {batchUiProgress || "Processing automated UI checks in batch…"}
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={stopBatchUiChecks}
+                    style={{
+                      height: 28,
+                      fontSize: 12,
+                      color: "#e00",
+                      borderColor: "#e00",
+                    }}
+                  >
+                    Cancel Batch
+                  </Button>
+                </div>
+              )}
               <section className="panel">
                 <div className="panel-heading">
                   <div>

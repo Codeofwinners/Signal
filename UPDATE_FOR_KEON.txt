@@ -1,0 +1,19 @@
+Hey Keon,
+
+Following up on the video I shared earlier — I completely removed the human from the loop. No more manual copying/pasting or typing rankings. 
+
+I added two fully automated methods:
+
+1. Automated Consumer UI ("Run UI Check")
+   Spawns a fresh logged-out ChatGPT session, captures full screenshot proof, and auto-extracts rankings & citations.
+   Cost: $0.00 / query
+
+2. OpenAI Responses API ("Run API Check")
+   Direct developer API call using GPT-5.6 with real-time web search. Tracks exact token counts and cost (~1.3¢ / query).
+
+Recorded a quick live demo showing both in action:
+https://drive.google.com/file/d/1YV1nmO5zEZy6xR-cdldcB3rYlm5VftBi/view?usp=sharing
+
+Live app: https://consumer-visibility.netlify.app
+
+Let me know what you think!

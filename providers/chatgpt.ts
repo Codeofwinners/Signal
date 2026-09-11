@@ -43,15 +43,81 @@ export async function runPrompt(options: ChatGPTCheckOptions): Promise<ChatGPTCh
 
     browser = await chromium.launch({
       headless,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
+      args: [
+        "--disable-blink-features=AutomationControlled",
+        "--disable-infobars",
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--no-first-run",
+        "--no-service-autorun",
+        "--use-mock-keychain",
+        "--password-store=basic",
+        "--window-size=1440,1200",
+      ],
+      ignoreDefaultArgs: ["--enable-automation"],
     });
 
     context = await browser.newContext({
       locale: "en-US",
       timezoneId: "America/Los_Angeles",
       viewport: { width: 1440, height: 1200 },
+      deviceScaleFactor: 1,
       userAgent:
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    });
+
+    // Stealth: Strip all automation flags and emulate genuine human desktop environment
+    await context.addInitScript(() => {
+      // 1. Strip navigator.webdriver flag from instance and prototype
+      try {
+        Object.defineProperty(navigator, "webdriver", {
+          get: () => undefined,
+        });
+        delete (Object.getPrototypeOf(navigator) as any).webdriver;
+      } catch {
+        // continue
+      }
+
+      // 2. Mock authentic window.chrome runtime
+      try {
+        (window as any).chrome = {
+          runtime: {},
+          loadTimes: () => {},
+          csi: () => {},
+          app: {},
+        };
+      } catch {
+        // continue
+      }
+
+      // 3. Mock realistic plugins and languages
+      try {
+        Object.defineProperty(navigator, "plugins", {
+          get: () => [
+            { name: "PDF Viewer", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+            { name: "Chrome PDF Viewer", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+            { name: "Chromium PDF Viewer", filename: "internal-pdf-viewer", description: "Portable Document Format" },
+          ],
+        });
+        Object.defineProperty(navigator, "languages", {
+          get: () => ["en-US", "en"],
+        });
+      } catch {
+        // continue
+      }
+
+      // 4. Spoof WebGL vendor and renderer to eliminate headless SwiftShader/Mesa strings
+      try {
+        const getParam = WebGLRenderingContext.prototype.getParameter;
+        WebGLRenderingContext.prototype.getParameter = function (param: number) {
+          if (param === 37445) return "Intel Inc."; // UNMASKED_VENDOR_WEBGL
+          if (param === 37446) return "Intel Iris OpenGL Engine"; // UNMASKED_RENDERER_WEBGL
+          return getParam.call(this, param);
+        };
+      } catch {
+        // continue
+      }
     });
 
     const page: Page = await context.newPage();
