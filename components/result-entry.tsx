@@ -1,9 +1,10 @@
 "use client";
-import { useState, useRef } from "react";
-import { ArrowRight, Plus, Trash2, Upload, Copy, Check } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { ArrowRight, Plus, Trash2, Upload, Copy, Check, Play } from "lucide-react";
 import { Modal } from "./ui/dialog";
 import { Button } from "./ui/button";
 import { Field } from "./forms";
+import { supabase } from "@/lib/supabase";
 import {
   type Run,
   type ProjectData,
@@ -23,11 +24,13 @@ export function ResultEntry({
   data,
   onClose,
   onSaved,
+  onRunAutomated,
 }: {
   run: Run;
   data: ProjectData;
   onClose: () => void;
   onSaved: (next: boolean) => Promise<void>;
+  onRunAutomated?: (run: Run) => Promise<void>;
 }) {
   const target = data.brands.find((b) => b.type === "target")!;
   const [brands, setBrands] = useState(data.brands);
@@ -74,6 +77,64 @@ export function ResultEntry({
   const [brandName, setBrandName] = useState("");
   const [copied, setCopied] = useState(false);
   const submitRef = useRef<HTMLButtonElement>(null);
+  const [automating, setAutomating] = useState(
+    ["queued", "running", "capturing", "analyzing"].includes(run.status),
+  );
+  const [autoStatus, setAutoStatus] = useState<string>(
+    ["queued", "running", "capturing", "analyzing"].includes(run.status)
+      ? run.status
+      : "",
+  );
+  const [autoSuccess, setAutoSuccess] = useState(
+    run.status === "complete" && run.collection_method === "ui",
+  );
+
+  useEffect(() => {
+    if (!automating) return;
+    const interval = setInterval(async () => {
+      try {
+        const { data: latest } = await supabase()
+          .from("prompt_runs")
+          .select("*")
+          .eq("id", run.id)
+          .single();
+        if (latest) {
+          setAutoStatus(latest.status);
+          if (
+            ["complete", "blocked", "needs_review", "failed"].includes(
+              latest.status,
+            )
+          ) {
+            setAutomating(false);
+            if (latest.status === "complete") {
+              setAutoSuccess(true);
+              setValue((prev) => ({
+                ...prev,
+                status: "complete",
+                target_mentioned: latest.target_mentioned,
+                target_position: latest.target_position,
+                target_cited: latest.target_cited,
+                response_text: latest.response_text || prev.response_text,
+                notes: latest.notes || prev.notes,
+                screenshot_url: latest.screenshot_url,
+                collection_method: latest.collection_method,
+                sentiment: latest.sentiment,
+                confidence: latest.confidence,
+              }));
+            } else if (["blocked", "needs_review"].includes(latest.status)) {
+              setError(
+                `Automated collection halted (${latest.status}). You can complete this check manually below.`,
+              );
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [automating, run.id]);
+
   function set<K extends keyof ResultInput>(key: K, v: ResultInput[K]) {
     setValue((prev) => ({ ...prev, [key]: v }));
   }
@@ -156,24 +217,106 @@ export function ResultEntry({
             <span className="badge">{run.topic_snapshot}</span>
           </div>
           <p>{run.prompt_snapshot}</p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(run.prompt_snapshot);
-                setCopied(true);
-              } catch {
-                setError(
-                  "Copy unavailable. Select the prompt text and copy it manually.",
-                );
-              }
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
-            {copied ? <Check size={14} /> : <Copy size={14} />}{" "}
-            {copied ? "Copied" : "Copy prompt"}
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(run.prompt_snapshot);
+                  setCopied(true);
+                } catch {
+                  setError(
+                    "Copy unavailable. Select the prompt text and copy it manually.",
+                  );
+                }
+              }}
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}{" "}
+              {copied ? "Copied" : "Copy prompt"}
+            </Button>
+            {run.engine === "chatgpt" && onRunAutomated && (
+              <Button
+                type="button"
+                variant={automating ? "outline" : "default"}
+                size="sm"
+                disabled={automating}
+                onClick={async () => {
+                  setAutomating(true);
+                  setAutoStatus("queued");
+                  setError("");
+                  try {
+                    await onRunAutomated(run);
+                  } catch (err) {
+                    setError(message(err));
+                    setAutomating(false);
+                  }
+                }}
+                style={{
+                  background: automating ? undefined : "var(--primary, #1e3a2b)",
+                  color: automating ? undefined : "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 5,
+                  fontWeight: 600,
+                  fontSize: 12,
+                }}
+              >
+                <Play size={12} fill="currentColor" />
+                {automating
+                  ? `Automating (${autoStatus || "working"})…`
+                  : "Auto-Check on ChatGPT (Consumer UI)"}
+              </Button>
+            )}
+          </div>
+          {automating && (
+            <div className="auto-status-indicator" style={{ marginTop: 10 }}>
+              <span className="live-dot" />
+              <span>
+                {autoStatus === "queued" &&
+                  "Queued: Launching pristine browser session…"}
+                {autoStatus === "running" &&
+                  "Running: Navigating to ChatGPT and submitting prompt…"}
+                {autoStatus === "capturing" &&
+                  "Capturing: Capturing full response proof screenshot…"}
+                {autoStatus === "analyzing" &&
+                  "Analyzing: Multimodal Vision AI extracting visibility & brands…"}
+                {!["queued", "running", "capturing", "analyzing"].includes(
+                  autoStatus,
+                ) && "Automating Consumer UI check…"}
+              </span>
+            </div>
+          )}
+          {autoSuccess && (
+            <div
+              style={{
+                marginTop: 10,
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                color: "#2e7d32",
+                fontWeight: 600,
+                background: "#edf7ee",
+                padding: "8px 12px",
+                borderRadius: 6,
+                border: "1px solid #c8e6c9",
+              }}
+            >
+              <Check size={14} />
+              <span>
+                Automated check completed! Evidence and response populated below.
+              </span>
+            </div>
+          )}
         </div>
         <div className="section-label">TARGET BRAND · {target.name}</div>
         <div className="form-grid three">
@@ -568,15 +711,33 @@ export function ResultEntry({
             <Button variant="outline" disabled={busy} type="submit">
               Save
             </Button>
-            <Button
-              ref={submitRef}
-              type="button"
-              disabled={busy}
-              onClick={() => void submit(true)}
-            >
-              {busy ? "Saving…" : "Save & Next Pending"}
-              <ArrowRight size={16} />
-            </Button>
+            {autoSuccess ? (
+              <Button
+                type="button"
+                onClick={() => void onSaved(true)}
+                style={{
+                  background: "var(--primary, #1e3a2b)",
+                  color: "#fff",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontWeight: 600,
+                }}
+              >
+                Next Pending Check
+                <ArrowRight size={16} />
+              </Button>
+            ) : (
+              <Button
+                ref={submitRef}
+                type="button"
+                disabled={busy}
+                onClick={() => void submit(true)}
+              >
+                {busy ? "Saving…" : "Save & Next Pending"}
+                <ArrowRight size={16} />
+              </Button>
+            )}
           </div>
         </div>
       </form>

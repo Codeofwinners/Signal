@@ -946,10 +946,34 @@ export function Workspace({
                 <Button
                   disabled={!filteredRuns.some((r) => r.status === "pending")}
                   onClick={openNext}
+                  title="Open the next pending check"
                 >
                   Next Pending
                   <ArrowRight size={15} />
                 </Button>
+                {filteredRuns.some(
+                  (r) => r.status === "pending" && r.engine === "chatgpt",
+                ) && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const nextGpt = filteredRuns.find(
+                        (r) => r.status === "pending" && r.engine === "chatgpt",
+                      );
+                      if (nextGpt) void triggerRunCheck(nextGpt);
+                    }}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontWeight: 600,
+                    }}
+                    title="Auto-run the next pending ChatGPT check via Consumer UI"
+                  >
+                    <Play size={12} fill="currentColor" />
+                    Auto-Run Next
+                  </Button>
+                )}
               </div>
               <section className="panel">
                 <div className="panel-heading">
@@ -1106,11 +1130,37 @@ export function Workspace({
                                             </button>
                                           )}
                                         </div>
-                                      ) : (
-                                        <span className="muted small">
-                                          Not in cycle
-                                        </span>
-                                      )}
+                                       ) : (
+                                         <button
+                                           className="status status-button pending"
+                                           title="Include this check in current cycle"
+                                           style={{
+                                             fontSize: 11,
+                                             cursor: "pointer",
+                                             whiteSpace: "nowrap",
+                                           }}
+                                           onClick={async () => {
+                                             try {
+                                               await supabase()
+                                                 .from("prompt_runs")
+                                                 .insert({
+                                                   tracking_cycle_id: cycleId,
+                                                   project_id: projectId,
+                                                   prompt_id: p.id,
+                                                   engine: e,
+                                                   prompt_snapshot: p.prompt,
+                                                   topic_snapshot: p.topic,
+                                                   status: "pending",
+                                                 });
+                                               await refresh(projectId);
+                                             } catch (err) {
+                                               setError(message(err));
+                                             }
+                                           }}
+                                         >
+                                           + Add check
+                                         </button>
+                                       )}
                                     </td>
                                   );
                                 })}
@@ -1239,6 +1289,7 @@ export function Workspace({
           key={entry.id}
           run={entry}
           data={data}
+          onRunAutomated={triggerRunCheck}
           onClose={() => setEntry(undefined)}
           onSaved={async (next) => {
             const savedId = entry.id;
