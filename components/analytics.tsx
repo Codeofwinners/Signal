@@ -20,6 +20,9 @@ import {
   ImageIcon,
   CheckCircle2,
   Sparkles,
+  Maximize2,
+  X,
+  Camera,
 } from "lucide-react";
 import {
   type ProjectData,
@@ -844,6 +847,7 @@ export function ResultDetail({
   const [images, setImages] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [showRawResponse, setShowRawResponse] = useState(true);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const siblingRuns = useMemo(() => {
     return data.runs
@@ -959,26 +963,22 @@ export function ResultDetail({
           </div>
           <div className="heading-actions">
             {activeProofUrl && (
-              <a
-                href={activeProofUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-outline"
+              <Button
+                variant="outline"
+                type="button"
+                onClick={() => setLightboxUrl(activeProofUrl)}
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
                   gap: 6,
                   fontSize: 13,
-                  padding: "6px 12px",
-                  borderRadius: 6,
-                  border: "1px solid var(--border, #d8ddd9)",
-                  textDecoration: "none",
-                  color: "inherit",
+                  fontWeight: 600,
+                  cursor: "pointer",
                 }}
               >
-                <ExternalLink size={14} />
-                View Screenshot
-              </a>
+                <Maximize2 size={14} />
+                Expand Screenshot
+              </Button>
             )}
             {onRunOpenAI && run.engine === "chatgpt" && (
               <Button
@@ -1210,7 +1210,10 @@ export function ResultDetail({
       {(run.collection_method !== "api" || shots.length > 0 || run.screenshot_url) && (
         <section className="panel">
           <div className="panel-heading">
-            <h3>Screenshot evidence</h3>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <h3>Screenshot evidence</h3>
+              <span className="small muted">· Click to expand full resolution</span>
+            </div>
             <ImageIcon size={18} />
           </div>
           {error && <p className="error">{error}</p>}
@@ -1218,17 +1221,43 @@ export function ResultDetail({
             <div className="screenshots">
               {shots.map((s) =>
                 images[s.id] ? (
-                  <a
+                  <div
                     key={s.id}
-                    href={images[s.id]}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={() => setLightboxUrl(images[s.id])}
+                    style={{
+                      cursor: "zoom-in",
+                      position: "relative",
+                      borderRadius: 6,
+                      overflow: "hidden",
+                      border: "1px solid var(--border, #d8ddd9)",
+                      background: "#000",
+                    }}
+                    title="Click to expand screenshot in full resolution"
                   >
                     <img
                       src={images[s.id]}
                       alt={`${ENGINE_NAMES[run.engine]} response screenshot`}
+                      style={{ width: "100%", height: "auto", display: "block" }}
                     />
-                  </a>
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: 8,
+                        right: 8,
+                        background: "rgba(0,0,0,0.75)",
+                        color: "#fff",
+                        padding: "4px 8px",
+                        borderRadius: 4,
+                        fontSize: 11,
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      <Maximize2 size={12} /> Click to expand
+                    </div>
+                  </div>
                 ) : (
                   <p key={s.id}>Loading screenshot…</p>
                 ),
@@ -1236,16 +1265,42 @@ export function ResultDetail({
             </div>
           ) : run.screenshot_url ? (
             <div className="screenshots">
-              <a
-                href={run.screenshot_url}
-                target="_blank"
-                rel="noreferrer"
+              <div
+                onClick={() => setLightboxUrl(run.screenshot_url || null)}
+                style={{
+                  cursor: "zoom-in",
+                  position: "relative",
+                  borderRadius: 6,
+                  overflow: "hidden",
+                  border: "1px solid var(--border, #d8ddd9)",
+                  background: "#000",
+                }}
+                title="Click to expand screenshot in full resolution"
               >
                 <img
                   src={run.screenshot_url}
                   alt={`${ENGINE_NAMES[run.engine]} response proof screenshot`}
+                  style={{ width: "100%", height: "auto", display: "block" }}
                 />
-              </a>
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: 8,
+                    right: 8,
+                    background: "rgba(0,0,0,0.75)",
+                    color: "#fff",
+                    padding: "4px 8px",
+                    borderRadius: 4,
+                    fontSize: 11,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                    pointerEvents: "none",
+                  }}
+                >
+                  <Maximize2 size={12} /> Click to expand
+                </div>
+              </div>
             </div>
           ) : (
             <Empty
@@ -1254,6 +1309,135 @@ export function ResultDetail({
             />
           )}
         </section>
+      )}
+
+      {/* In-Browser Fullscreen Screenshot Lightbox for Video Recordings & Demos */}
+      {lightboxUrl && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setLightboxUrl(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 999999,
+            background: "rgba(0, 0, 0, 0.88)",
+            backdropFilter: "blur(6px)",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "20px",
+          }}
+        >
+          {/* Lightbox Controls Header */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 1280,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "12px 18px",
+              background: "#161b22",
+              color: "#e6edf3",
+              borderRadius: "10px 10px 0 0",
+              border: "1px solid #30363d",
+              borderBottom: "none",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span
+                style={{
+                  background: "#0070f3",
+                  color: "#fff",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: 4,
+                }}
+              >
+                {ENGINE_NAMES[run.engine]} UI Evidence
+              </span>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                &ldquo;{run.prompt_snapshot}&rdquo;
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <a
+                href={lightboxUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{
+                  color: "#58a6ff",
+                  fontSize: 12,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 4,
+                  fontWeight: 500,
+                  padding: "4px 8px",
+                }}
+              >
+                <ExternalLink size={13} />
+                Open direct link
+              </a>
+              <button
+                type="button"
+                onClick={() => setLightboxUrl(null)}
+                style={{
+                  background: "#238636",
+                  border: "none",
+                  color: "#fff",
+                  borderRadius: 6,
+                  padding: "6px 14px",
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <X size={15} /> Close Viewer
+              </button>
+            </div>
+          </div>
+
+          {/* Scrollable High-Res Image Canvas */}
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 1280,
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "#0d1117",
+              borderRadius: "0 0 10px 10px",
+              border: "1px solid #30363d",
+              borderTop: "none",
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.7)",
+              display: "flex",
+              justifyContent: "center",
+              padding: "16px",
+            }}
+          >
+            <img
+              src={lightboxUrl}
+              alt={`${ENGINE_NAMES[run.engine]} full response proof screenshot`}
+              style={{
+                width: "100%",
+                maxWidth: "1100px",
+                height: "auto",
+                display: "block",
+                borderRadius: 8,
+                boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
+                background: "#ffffff",
+              }}
+            />
+          </div>
+        </div>
       )}
     </>
   );

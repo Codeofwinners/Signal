@@ -124,7 +124,7 @@ export async function saveResult(run: Run, input: ResultInput, files: File[]) {
 export async function signedScreenshot(path: string) {
   const { data, error } = await supabase()
     .storage.from("screenshots")
-    .createSignedUrl(path, 3600);
+    .createSignedUrl(path, 3600, { download: false });
   check(error);
   return data!.signedUrl;
 }

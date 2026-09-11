@@ -71,7 +71,7 @@ export async function saveProofScreenshot(
     if (!uploadError) {
       const { data: signedData } = await supabase.storage
         .from("screenshots")
-        .createSignedUrl(storagePath, 60 * 60 * 24 * 365); // 1 year signed URL
+        .createSignedUrl(storagePath, 60 * 60 * 24 * 365, { download: false }); // 1 year signed URL (inline view)
       if (signedData?.signedUrl) {
         supabaseSignedUrl = signedData.signedUrl;
       }
