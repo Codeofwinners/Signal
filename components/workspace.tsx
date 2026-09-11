@@ -25,6 +25,7 @@ import {
   Settings2,
   Play,
   Sparkles,
+  Camera,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { Modal } from "./ui/dialog";
@@ -156,9 +157,9 @@ export function Workspace({
       live = false;
     };
   }, [userId]);
-  const refresh = useCallback(async (id: string) => {
+  const refresh = useCallback(async (id: string, silent = false) => {
     const request = ++activeRequest.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     try {
       const fresh = await loadProject(id);
       if (request === activeRequest.current) {
@@ -173,7 +174,7 @@ export function Workspace({
       }
       return fresh;
     } finally {
-      if (request === activeRequest.current) setLoading(false);
+      if (!silent && request === activeRequest.current) setLoading(false);
     }
   }, []);
   useEffect(() => {
@@ -268,6 +269,7 @@ export function Workspace({
   }
   const triggerRunCheck = useCallback(
     async (run: Run) => {
+      if (!projectId || !cycleId) return;
       try {
         const targetBrand =
           data.brands.find((b) => b.type === "target")?.name ||
@@ -275,14 +277,11 @@ export function Workspace({
         setNotice(
           `Starting automated Consumer UI check on ChatGPT for "${run.prompt_snapshot}"…`,
         );
-        setData((prev) => ({
-          ...prev,
-          runs: prev.runs.map((r) =>
-            r.id === run.id
-              ? { ...r, status: "queued", collection_method: "ui" }
-              : r,
-          ),
-        }));
+
+        const shouldCreateNew =
+          !run.id ||
+          run.collection_method === "api" ||
+          run.status === "complete";
 
         const res = await fetch("/api/run-check", {
           method: "POST",
@@ -293,20 +292,31 @@ export function Workspace({
               : "",
           },
           body: JSON.stringify({
-            runId: run.id,
+            runId: run.id || undefined,
+            promptId: run.prompt_id,
+            cycleId: run.tracking_cycle_id || cycleId,
+            projectId: run.project_id || projectId,
             targetBrand,
+            forceNew: shouldCreateNew,
           }),
         });
 
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => ({}));
-          throw new Error(errJson.error || "Failed to trigger automated check");
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          throw new Error(result.error || "Failed to execute automated check");
         }
+
+        const fresh = await refresh(projectId, true);
+        if (fresh && result.runId) {
+          const freshRun = fresh.runs.find((r) => r.id === result.runId);
+          if (freshRun) setDetail(freshRun);
+        }
+        setNotice(`Consumer UI check complete for "${run.prompt_snapshot}".`);
       } catch (err) {
         setError(message(err));
       }
     },
-    [data.brands, session],
+    [cycleId, projectId, data.brands, session, refresh],
   );
 
   const triggerOpenAICheck = useCallback(
@@ -378,7 +388,7 @@ export function Workspace({
     if (!hasActiveRun || !projectId) return;
 
     const timer = setInterval(() => {
-      void refresh(projectId);
+      void refresh(projectId, true);
     }, 2500);
 
     return () => clearInterval(timer);
@@ -1256,9 +1266,35 @@ export function Workspace({
                                                 display: "flex",
                                                 gap: 4,
                                                 flexWrap: "wrap",
-                                                marginTop: 2,
+                                                marginTop: 3,
                                               }}
                                             >
+                                              <button
+                                                className="run-ui-check-btn"
+                                                title="Run automated Consumer UI check with screenshot proof"
+                                                style={{
+                                                  background: "#0070f3",
+                                                  color: "#fff",
+                                                  border: "none",
+                                                  borderRadius: 6,
+                                                  padding: "4px 8px",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                  cursor: "pointer",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: 4,
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  const targetRun = cellRuns[0];
+                                                  void triggerRunCheck(targetRun);
+                                                }}
+                                              >
+                                                <Camera size={10} />
+                                                Run UI Check
+                                              </button>
                                               <button
                                                 className="run-api-check-btn"
                                                 title="Run official OpenAI API check with Web Search enabled"
@@ -1285,53 +1321,8 @@ export function Workspace({
                                                 <Sparkles size={10} fill="currentColor" />
                                                 {apiRunningPromptId === p.id
                                                   ? "Calling API…"
-                                                  : "Run OpenAI API Check"}
+                                                  : "Run API Check"}
                                               </button>
-                                              {cellRuns.some(
-                                                (r) =>
-                                                  r.collection_method !== "api" &&
-                                                  r.status === "pending",
-                                              ) && (
-                                                <button
-                                                  className="run-check-btn"
-                                                  title="Run automated check via Consumer UI"
-                                                  style={{
-                                                    background: "var(--primary, #1e3a2b)",
-                                                    color: "#fff",
-                                                    border: "none",
-                                                    borderRadius: 6,
-                                                    padding: "4px 8px",
-                                                    fontSize: 11,
-                                                    fontWeight: 600,
-                                                    cursor: "pointer",
-                                                    display: "inline-flex",
-                                                    alignItems: "center",
-                                                    gap: 4,
-                                                    whiteSpace: "nowrap",
-                                                  }}
-                                                  disabled={[
-                                                    "queued",
-                                                    "running",
-                                                    "capturing",
-                                                    "analyzing",
-                                                  ].includes(
-                                                    cellRuns.find(
-                                                      (r) => r.collection_method !== "api",
-                                                    )?.status || "",
-                                                  )}
-                                                  onClick={(evt) => {
-                                                    evt.stopPropagation();
-                                                    const uiRun =
-                                                      cellRuns.find(
-                                                        (r) => r.collection_method !== "api",
-                                                      ) || cellRuns[0];
-                                                    void triggerRunCheck(uiRun);
-                                                  }}
-                                                >
-                                                  <Play size={10} fill="currentColor" />
-                                                  Run UI Check
-                                                </button>
-                                              )}
                                             </div>
                                           )}
                                         </div>
@@ -1365,7 +1356,7 @@ export function Workspace({
                                                     topic_snapshot: p.topic,
                                                     status: "pending",
                                                   });
-                                                await refresh(projectId);
+                                                await refresh(projectId, true);
                                               } catch (err) {
                                                 setError(message(err));
                                               }
@@ -1374,34 +1365,82 @@ export function Workspace({
                                             + Add check
                                           </button>
                                           {e === "chatgpt" && (
-                                            <button
-                                              className="run-api-check-btn"
-                                              title="Run official OpenAI API check with Web Search enabled"
-                                              style={{
-                                                background: "#7928ca",
-                                                color: "#fff",
-                                                border: "none",
-                                                borderRadius: 6,
-                                                padding: "4px 8px",
-                                                fontSize: 11,
-                                                fontWeight: 600,
-                                                cursor: "pointer",
-                                                display: "inline-flex",
-                                                alignItems: "center",
-                                                gap: 4,
-                                                whiteSpace: "nowrap",
-                                              }}
-                                              disabled={apiRunningPromptId === p.id}
-                                              onClick={(evt) => {
-                                                evt.stopPropagation();
-                                                void triggerOpenAICheck(p.id);
-                                              }}
-                                            >
-                                              <Sparkles size={10} fill="currentColor" />
-                                              {apiRunningPromptId === p.id
-                                                ? "Calling API…"
-                                                : "Run OpenAI API Check"}
-                                            </button>
+                                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 2 }}>
+                                              <button
+                                                className="run-ui-check-btn"
+                                                title="Run automated Consumer UI check with screenshot proof"
+                                                style={{
+                                                  background: "#0070f3",
+                                                  color: "#fff",
+                                                  border: "none",
+                                                  borderRadius: 6,
+                                                  padding: "4px 8px",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                  cursor: "pointer",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: 4,
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  void triggerRunCheck({
+                                                    id: "",
+                                                    project_id: projectId,
+                                                    tracking_cycle_id: cycleId,
+                                                    prompt_id: p.id,
+                                                    engine: "chatgpt",
+                                                    status: "pending",
+                                                    prompt_snapshot: p.prompt,
+                                                    topic_snapshot: p.topic,
+                                                    response_text: "",
+                                                    target_mentioned: false,
+                                                    target_position: null,
+                                                    target_cited: false,
+                                                    map_present: false,
+                                                    images_present: false,
+                                                    products_present: false,
+                                                    notes: "",
+                                                    checked_at: null,
+                                                    created_at: new Date().toISOString(),
+                                                    updated_at: new Date().toISOString(),
+                                                    collection_method: "ui",
+                                                  });
+                                                }}
+                                              >
+                                                <Camera size={10} />
+                                                Run UI Check
+                                              </button>
+                                              <button
+                                                className="run-api-check-btn"
+                                                title="Run official OpenAI API check with Web Search enabled"
+                                                style={{
+                                                  background: "#7928ca",
+                                                  color: "#fff",
+                                                  border: "none",
+                                                  borderRadius: 6,
+                                                  padding: "4px 8px",
+                                                  fontSize: 11,
+                                                  fontWeight: 600,
+                                                  cursor: "pointer",
+                                                  display: "inline-flex",
+                                                  alignItems: "center",
+                                                  gap: 4,
+                                                  whiteSpace: "nowrap",
+                                                }}
+                                                disabled={apiRunningPromptId === p.id}
+                                                onClick={(evt) => {
+                                                  evt.stopPropagation();
+                                                  void triggerOpenAICheck(p.id);
+                                                }}
+                                              >
+                                                <Sparkles size={10} fill="currentColor" />
+                                                {apiRunningPromptId === p.id
+                                                  ? "Calling API…"
+                                                  : "Run API Check"}
+                                              </button>
+                                            </div>
                                           )}
                                         </div>
                                       )}

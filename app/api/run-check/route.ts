@@ -9,14 +9,14 @@ export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get("authorization");
     const body = await request.json();
-    const { runId, targetBrand = "LAX Cannabis Club" } = body;
-
-    if (!runId) {
-      return NextResponse.json(
-        { error: "runId is required" },
-        { status: 400 },
-      );
-    }
+    const {
+      runId,
+      promptId,
+      cycleId,
+      projectId,
+      targetBrand = "LAX Cannabis Club",
+      forceNew = false,
+    } = body;
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
@@ -34,54 +34,122 @@ export async function POST(request: Request) {
       },
     });
 
-    // 1. Verify access to run
-    const { data: runData, error: runError } = await supabase
-      .from("prompt_runs")
-      .select("*")
-      .eq("id", runId)
-      .single();
+    let targetRun: Run | null = null;
 
-    if (runError || !runData) {
+    if (runId) {
+      const { data: existingRun } = await supabase
+        .from("prompt_runs")
+        .select("*")
+        .eq("id", runId)
+        .single();
+      targetRun = existingRun as Run | null;
+    }
+
+    // If targetRun is already complete, or was collected via API, or forceNew is requested:
+    // create a fresh historical prompt_run record so we NEVER overwrite or wipe out an API result!
+    const shouldCreateNew =
+      forceNew ||
+      !targetRun ||
+      targetRun.status === "complete" ||
+      targetRun.collection_method === "api";
+
+    if (shouldCreateNew) {
+      const pId = promptId || targetRun?.prompt_id;
+      const cId = cycleId || targetRun?.tracking_cycle_id;
+      const projId = projectId || targetRun?.project_id;
+
+      if (!pId || !cId || !projId) {
+        return NextResponse.json(
+          { error: "promptId, cycleId, and projectId are required to create a new UI run." },
+          { status: 400 },
+        );
+      }
+
+      // Fetch prompt snapshot
+      const { data: promptData, error: pErr } = await supabase
+        .from("prompts")
+        .select("*")
+        .eq("id", pId)
+        .single();
+
+      if (pErr || !promptData) {
+        return NextResponse.json(
+          { error: `Prompt not found: ${pErr?.message}` },
+          { status: 404 },
+        );
+      }
+
+      // Clean up any empty pending placeholder run
+      await supabase
+        .from("prompt_runs")
+        .delete()
+        .eq("tracking_cycle_id", cId)
+        .eq("prompt_id", pId)
+        .eq("engine", "chatgpt")
+        .eq("status", "pending")
+        .eq("response_text", "");
+
+      // Insert fresh prompt_run for Consumer UI check
+      const { data: newRun, error: insertErr } = await supabase
+        .from("prompt_runs")
+        .insert({
+          tracking_cycle_id: cId,
+          project_id: projId,
+          prompt_id: pId,
+          engine: "chatgpt",
+          collection_method: "ui",
+          status: "running",
+          prompt_snapshot: promptData.prompt,
+          topic_snapshot: promptData.topic,
+          notes: "Automated Consumer UI check started...",
+        })
+        .select("*")
+        .single();
+
+      if (insertErr || !newRun) {
+        return NextResponse.json(
+          { error: `Failed to create prompt_run: ${insertErr?.message}` },
+          { status: 500 },
+        );
+      }
+
+      targetRun = newRun as Run;
+    } else if (targetRun) {
+      // Mark existing pending run as running
+      await supabase.rpc("set_run_status", {
+        p_run_id: targetRun.id,
+        p_status: "running",
+        p_collection_method: "ui",
+      });
+    }
+
+    if (!targetRun) {
       return NextResponse.json(
-        { error: `Run not found or inaccessible: ${runError?.message}` },
-        { status: 404 },
+        { error: "Could not identify target run for execution" },
+        { status: 400 },
       );
     }
 
-    const run = runData as Run;
+    const runToExecute: Run = targetRun;
 
-    // 2. Set status to queued immediately in Supabase
-    await supabase.rpc("set_run_status", {
-      p_run_id: run.id,
-      p_status: "queued",
-      p_collection_method: "ui",
+    // Execute the prompt run and await completion so Netlify Lambda doesn't freeze
+    const { executePromptRun } = await import("@/workers/prompt-worker");
+    const result = await executePromptRun({
+      supabase,
+      run: runToExecute,
+      targetBrand,
+      onProgress: (status, detail) => {
+        console.log(`[API /api/run-check][${runToExecute.id}] Status: ${status} - ${detail || ""}`);
+      },
     });
 
-    // 3. Attempt to kick off the worker if Playwright is runnable in this environment
-    void (async () => {
-      try {
-        const { executePromptRun } = await import("@/workers/prompt-worker");
-        await executePromptRun({
-          supabase,
-          run,
-          targetBrand,
-          onProgress: (status, detail) => {
-            console.log(`[Worker][${run.id}] Status: ${status} - ${detail || ""}`);
-          },
-        });
-      } catch (err) {
-        console.warn(
-          `[API /api/run-check] Local browser execution not available in this container; run queued for background worker daemon:`,
-          err,
-        );
-      }
-    })();
-
     return NextResponse.json({
-      success: true,
-      status: "queued",
-      runId: run.id,
-      message: "Automated consumer UI check queued and started",
+      success: result.success,
+      status: result.status,
+      runId: runToExecute.id,
+      screenshotUrl: result.screenshotUrl,
+      error: result.error,
+      message: "Automated consumer UI check executed",
     });
   } catch (error) {
     console.error("API /api/run-check error:", error);

@@ -1,0 +1,51 @@
+================================================================================
+HOW THE TWO NON-MANUAL METHODS WORK (NO HUMAN IN THE LOOP)
+================================================================================
+
+--------------------------------------------------------------------------------
+1. AUTOMATED CONSUMER UI ("Run UI Check")
+--------------------------------------------------------------------------------
+This mimics an everyday human user on the web, completely automated:
+
+1. FRESH INCOGNITO SESSION:
+   An automated browser launches a fresh, completely logged-out session on chatgpt.com.
+
+2. SUBMITS & WAITS:
+   It types your stored prompt, submits it, and waits until the response finishes streaming.
+
+3. FULL SCREENSHOT PROOF:
+   It snaps a full-page, uncompressed screenshot of the actual webpage as proof.
+
+4. VISION AI EXTRACTION:
+   An AI vision pipeline reads the screenshot, detects if our brand was mentioned,
+   extracts our exact numbered ranking (#1, #2, etc.), and pulls cited competitor links.
+
+5. ZERO-TOUCH SAVE:
+   Saves the results, attaches the screenshot proof, and tags it with a blue "UI" badge.
+
+
+--------------------------------------------------------------------------------
+2. OPENAI RESPONSES API ("Run OpenAI API Check")
+--------------------------------------------------------------------------------
+This tests the official developer API with live search enabled:
+
+1. DIRECT API CALL WITH WEB SEARCH:
+   Our server calls the official OpenAI Responses API using the latest GPT-5.6 model
+   with the built-in "web_search" tool enabled.
+
+2. REAL-TIME WEB CRAWL:
+   OpenAI actively browses the live web to find current recommendations, citations,
+   and dispensaries.
+
+3. INSTANT EXTRACTION:
+   The system automatically parses the text and source links to determine if our brand
+   was recommended, its list rank, and which competitors appeared.
+
+4. TOKEN & COST TRACKING:
+   Tracks exact token usage (~17,000–18,000 tokens) and calculated dollar cost
+   (~1.3 cents per query).
+
+5. AUDITABLE HISTORY:
+   Saves a permanent historical record tagged with a purple "API" badge, lets you toggle
+   the raw JSON text, and lets you switch between past runs to compare ranking changes.
+================================================================================

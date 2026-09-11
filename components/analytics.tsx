@@ -1141,7 +1141,7 @@ export function ResultDetail({
           </div>
         </section>
       </div>
-      {run.collection_method === "api" ? (
+      {(run.collection_method === "api" || run.response_id || run.estimated_cost !== null) && (
         <section className="panel">
           <div className="panel-heading">
             <div>
@@ -1205,7 +1205,9 @@ export function ResultDetail({
             </div>
           )}
         </section>
-      ) : (
+      )}
+
+      {(run.collection_method !== "api" || shots.length > 0 || run.screenshot_url) && (
         <section className="panel">
           <div className="panel-heading">
             <h3>Screenshot evidence</h3>
