@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Run, RunStatus } from "../lib/types";
-import { runPrompt } from "../providers/chatgpt";
 import { saveProofScreenshot } from "../services/storage";
 import { analyzeScreenshot } from "../services/screenshot-analyzer";
 import { updateRunStatus, saveAutomatedResult } from "../services/database";
@@ -42,6 +41,7 @@ export async function executePromptRun(
     onProgress?.("queued", "Job queued for consumer UI worker");
 
     // 2. Launch browser & navigate to ChatGPT
+    const { runPrompt } = await import("../providers/chatgpt");
     const checkResult = await runPrompt({
       prompt: run.prompt_snapshot,
       headless: true,
@@ -143,3 +143,66 @@ export async function executePromptRun(
     };
   }
 }
+
+/**
+ * Standalone worker polling loop.
+ * Runs continuously on a machine with Playwright (like this Mac) to process queued consumer UI checks.
+ */
+export async function startWorkerDaemon() {
+  const { createClient } = await import("@supabase/supabase-js");
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("[Worker Daemon] Missing Supabase credentials.");
+    return;
+  }
+  const supabase = createClient(supabaseUrl, supabaseKey);
+
+  console.log("[Worker Daemon] Started. Polling for queued Consumer UI runs...");
+  let isRunning = false;
+
+  const poll = async () => {
+    if (isRunning) return;
+    try {
+      const { data: runs, error } = await supabase
+        .from("prompt_runs")
+        .select("*, projects(*)")
+        .eq("status", "queued")
+        .eq("collection_method", "ui")
+        .order("created_at", { ascending: true })
+        .limit(1);
+
+      if (error || !runs || runs.length === 0) return;
+
+      const run = runs[0] as Run;
+      isRunning = true;
+      console.log(`[Worker Daemon] Processing queued run ${run.id} for prompt "${run.prompt_snapshot}"...`);
+
+      const targetBrand = (run as any).projects?.name || "LAX Cannabis Club";
+      await executePromptRun({
+        supabase,
+        run,
+        targetBrand,
+        onProgress: (status, detail) => {
+          console.log(`[Worker Daemon][${run.id}] ${status}: ${detail || ""}`);
+        },
+      });
+      console.log(`[Worker Daemon] Completed run ${run.id}.`);
+    } catch (e) {
+      console.error("[Worker Daemon] Poll execution error:", e);
+    } finally {
+      isRunning = false;
+    }
+  };
+
+  setInterval(poll, 3000);
+  void poll();
+}
+
+if (
+  process.argv[1]?.includes("prompt-worker") ||
+  process.env.RUN_WORKER_DAEMON === "true"
+) {
+  void startWorkerDaemon();
+}
+
