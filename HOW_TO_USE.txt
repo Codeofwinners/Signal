@@ -1,0 +1,146 @@
+================================================================================
+SIGNAL — CONSUMER AI VISIBILITY (AIO / GEO TRACKING WORKSPACE)
+HOW-TO GUIDE & WORKFLOW MANUAL
+================================================================================
+
+LIVE APP URL: https://consumer-visibility.netlify.app
+NETLIFY PROJECT: consumer-visibility
+NETLIFY ADMIN: https://app.netlify.com/projects/consumer-visibility
+SUPABASE DASHBOARD: https://supabase.com/dashboard/project/forfkuypdkoegdcrnjdb
+
+--------------------------------------------------------------------------------
+1. WHAT IS SIGNAL?
+--------------------------------------------------------------------------------
+Signal is a dedicated manual tracking workspace for measuring and monitoring how
+brands appear in consumer AI search interfaces:
+  • ChatGPT (OpenAI)
+  • Gemini (Google)
+  • Perplexity
+  • Claude (Anthropic)
+
+WHY MANUAL CHECKS?
+API outputs differ from the actual consumer experience. Signal avoids AI API
+integrations, automated scraping, or bots. Instead, a human tests the exact
+prompts in the free, logged-out web interfaces of each AI engine, then records
+the actual mentions, rankings, citations, and screenshots.
+
+--------------------------------------------------------------------------------
+2. INITIAL ONE-TIME SETUP
+--------------------------------------------------------------------------------
+To access the app for the first time:
+
+STEP 1: CREATE YOUR USER IN SUPABASE
+  1. Open: https://supabase.com/dashboard/project/forfkuypdkoegdcrnjdb/auth/users
+  2. Click "Add user" -> "Create new user".
+  3. Enter your email and password.
+  4. Make sure "Auto Confirm User" is toggled ON.
+  5. Click "Create user".
+
+STEP 2: CONFIGURE THE SITE URL IN SUPABASE
+  1. Open: https://supabase.com/dashboard/project/forfkuypdkoegdcrnjdb/auth/url-configuration
+  2. Set "Site URL" to: https://consumer-visibility.netlify.app
+  3. Under "Redirect URLs", add: https://consumer-visibility.netlify.app/**
+  4. Save changes.
+
+STEP 3: SIGN IN
+  1. Open: https://consumer-visibility.netlify.app
+  2. Enter the email and password you created in Step 1.
+  3. Click "Sign in".
+
+--------------------------------------------------------------------------------
+3. STEP-BY-STEP DAILY WORKFLOW
+--------------------------------------------------------------------------------
+
+STEP A: CREATE A PROJECT
+  1. In the sidebar, click "+ New Project".
+  2. Enter:
+     • Project Name (e.g. "Acme Corp Visibility")
+     • Target Brand Name (e.g. "Acme")
+     • Target Domain (e.g. "acme.com")
+     • Location / Market (e.g. "United States", "New York")
+     • Brand Aliases (comma-separated, e.g. "Acme Co, Acme Inc, Acme Software")
+     • Optional: Logo URL (must be HTTPS)
+  3. Save. Each user has isolated projects protected by database Row-Level Security.
+
+STEP B: ADD PROMPTS TO TRACK
+  1. Open the "Prompts" tab in your project.
+  2. Click "+ New Prompt".
+  3. Enter:
+     • Prompt text (e.g. "What is the best CRM software for real estate agents?")
+     • Topic (e.g. "CRM Software")
+     • Intent (e.g. "Commercial", "Informational", "Transactional")
+     • Location (e.g. "US", "Global")
+  4. Add as many search queries as you want to monitor.
+  5. Note: You can deactivate prompts later so they are excluded from future cycles
+     without altering past historical records.
+
+STEP C: CREATE A TRACKING CYCLE
+  1. Go to "Tracking Cycles" and click "+ New Cycle".
+  2. Enter a Cycle Name (e.g. "March 2026 Baseline" or "Weekly Audit - Mar 10")
+     and choose the measurement date.
+  3. Click "Create Cycle".
+  4. Signal will snapshot all active prompts and automatically generate exactly
+     4 pending checks for each prompt (one for ChatGPT, Gemini, Perplexity, and Claude).
+     For example, 10 active prompts = 40 pending engine checks.
+
+STEP D: CONDUCT THE CHECKS & ENTER OBSERVATIONS
+  1. Open an incognito / private browser window with no accounts logged in.
+  2. Open the four engines:
+     • ChatGPT: https://chatgpt.com
+     • Gemini: https://gemini.google.com
+     • Perplexity: https://www.perplexity.ai
+     • Claude: https://claude.ai
+  3. In Signal, click "Pending" or "Next Pending" to open the entry drawer.
+  4. Click the copy icon next to the prompt text, then paste it into the engine.
+  5. Inspect the AI's response:
+     • Mentioned: Did the AI mention your target brand? (Yes / No)
+     • Position: If mentioned in a list, what rank or position was it? (1, 2, 3...)
+     • Recommendation: Did the AI recommend or favor the brand?
+     • Competitors: Did competitors appear? Select or type new competitor names inline.
+     • Citations: Did the AI cite URLs? Paste the source links (domains normalize automatically).
+     • Evidence Screenshot: Drag & drop or attach a screenshot (PNG/JPEG/WebP up to 10MB)
+       which uploads to private secure Supabase storage.
+  6. SPEED TIP: Use keyboard shortcut Cmd+Enter (Mac) or Ctrl+Enter (Windows)
+     or click "Save & Next Pending".
+     This atomically saves the result and instantly advances to the next pending
+     check, looping through all prompts and engines smoothly.
+
+STEP E: REVIEW ANALYTICS & METRICS
+  Once checks are entered, the Overview, Competitors, Sources, and History tabs
+  populate automatically:
+  • AI Visibility: % of complete checks where your target brand was mentioned.
+  • Average Position: Mean numerical position when your brand was ranked.
+  • Top 3 Presence: % of checks where your brand was in the top 3 recommendations.
+  • Citation Rate: % of checks where your brand was cited as a source link.
+  • Share of Voice: Your brand's mentions divided by total mentions of all brands.
+  • Historical Deltas: Compare cycle-over-cycle progress in percentage points.
+
+STEP F: EXPORT REPORTS
+  1. Go to the "History" or "Overview" tab.
+  2. Click "Export CSV".
+  3. Downloads a clean CSV report containing methodology, summarized metrics,
+     and run-by-run audit logs (formatted and sanitized against formula injection).
+
+--------------------------------------------------------------------------------
+4. KEYBOARD SHORTCUTS & POWER-USER TIPS
+--------------------------------------------------------------------------------
+  • Cmd+Enter / Ctrl+Enter: Save current check and immediately advance to Next Pending.
+  • Esc: Close the entry modal / drawer.
+  • Filters: Filter pending checks by engine (e.g. audit all Perplexity checks first).
+  • Corrections: Click any completed run to view signed screenshot previews and edit
+    or correct data with optimistic locking protection.
+  • Skipped / Error Checks: If an engine is blocked or down, mark as Skipped or Error.
+    These are safely excluded from denominators so they don't penalize visibility.
+
+--------------------------------------------------------------------------------
+5. TECHNICAL & DEPLOYMENT REFERENCE
+--------------------------------------------------------------------------------
+  • Framework: Next.js 16 (Turbopack, App Router), React 19, TypeScript, Tailwind 4.
+  • Backend: Supabase Auth, PostgreSQL with Row Level Security (RLS), Supabase Storage.
+  • Hosting: Netlify (Next.js Runtime v5, Node 24).
+  • Redeploying from CLI:
+      netlify deploy --build --prod
+  • Continuous Deployment:
+      Pushes to GitHub branch 'main' (Codeofwinners/Signal) can be linked in Netlify
+      to trigger automatic deployments.
+================================================================================
