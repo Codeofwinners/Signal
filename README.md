@@ -1,6 +1,6 @@
 # Signal — Consumer AI Visibility
 
-A manual AIO/GEO tracking workspace built with Next.js 16 App Router, TypeScript, Tailwind CSS 4, shadcn-style Radix UI components, Supabase Auth/PostgreSQL/Storage, Zod, and Recharts. Deployable to Vercel with pnpm.
+A manual AIO/GEO tracking workspace built with Next.js 16 App Router, TypeScript, Tailwind CSS 4, shadcn-style Radix UI components, Supabase Auth/PostgreSQL/Storage, Zod, and Recharts. Deployable to Netlify with pnpm.
 
 A human performs every check in the **free, logged-out consumer interfaces** of **ChatGPT, Gemini, Perplexity, and Claude**. The app never queries AI services. There are no AI API integrations, scraping tools, browser automation, background workers, or scheduled jobs.
 
@@ -114,8 +114,12 @@ Connected-service verification passed for password authentication, project/cycle
 
 For administrative project removal, delete that project’s tracking cycles before deleting the project so historical brand references are removed in foreign-key order. Project deletion is intentionally not exposed in the app.
 
-## Vercel
+## Netlify
 
-Import this repository into Vercel with the Next.js preset. Select Node 24.x, install with `pnpm install --frozen-lockfile`, and build with `pnpm build`. Add both `NEXT_PUBLIC_SUPABASE_*` values to the appropriate Vercel environments **before** the build. Apply the database migration to the associated Supabase project and create your internal user accounts before use. Set the Supabase Site URL to your deployed URL. No Vercel cron configuration or additional infrastructure is required.
+Import `Codeofwinners/Signal` from GitHub in Netlify. The checked-in `netlify.toml` sets the build command to `pnpm build`, publish directory to `.next`, Node 24, and pnpm hoisting for the Next.js runtime. Netlify detects Next.js and installs its runtime automatically; do not use a static export.
 
-This workspace includes deployment-ready source; creating a Vercel deployment requires your Vercel project/account and is not performed by the app itself.
+In the Netlify project's environment variables, add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from your local `.env.local` before building. Both values are public application configuration; never add a database password or service-role key. Netlify must rebuild after public environment variables change.
+
+For CLI deployment, run `netlify login`, link or create the Netlify project, set the two environment variables, and use `netlify deploy --build --prod`. Git-connected builds can deploy future pushes automatically.
+
+Create your login in [Supabase Authentication → Users](https://supabase.com/dashboard/project/forfkuypdkoegdcrnjdb/auth/users): choose **Add user → Create new user**, enter your email and password, and enable **Auto Confirm User** if shown. Sign in to Signal using those credentials. Public signups remain disabled.
